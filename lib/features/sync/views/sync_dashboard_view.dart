@@ -179,12 +179,12 @@ class _SyncDashboardViewState extends ConsumerState<SyncDashboardView> {
                   _SectionCard(
                     icon: Icons.qr_code_2,
                     iconColor: Colors.blue,
-                    title: '面对面同步',
-                    subtitle: '无需网络，两台设备扫码互传',
+                    title: '面对面传输（局域网）',
+                    subtitle: '同一 WiFi 下，扫码直传全部数据（含图片）',
                     children: [
                       OutlinedButton.icon(
-                        icon: const Icon(Icons.qr_code_2, size: 22),
-                        label: const Text('二维码同步 (免流)'),
+                        icon: const Icon(Icons.wifi_tethering, size: 22),
+                        label: const Text('发起面对面传输'),
                         style: OutlinedButton.styleFrom(
                           padding: EdgeInsets.symmetric(vertical: 14.h),
                           foregroundColor: Colors.blue,

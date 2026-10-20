@@ -134,13 +134,16 @@ class SettingsTab extends ConsumerWidget {
                   child: Icon(Icons.qr_code_2, color: Colors.blue, size: 24.r),
                 ),
                 title: Text(
-                  '二维码面对面同步',
+                  '面对面传输（局域网）',
                   style: TextStyle(
                     fontSize: 16.sp,
                     fontWeight: FontWeight.bold,
                   ),
                 ),
-                subtitle: Text('扫码免流同步家庭数据', style: TextStyle(fontSize: 14.sp)),
+                subtitle: Text(
+                  '同一 WiFi 下面对面传输数据',
+                  style: TextStyle(fontSize: 14.sp),
+                ),
                 trailing: const Icon(Icons.arrow_forward_ios, size: 16),
                 onTap: () {
                   Navigator.push(
