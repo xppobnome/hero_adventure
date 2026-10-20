@@ -152,6 +152,7 @@ class _SyncDashboardViewState extends ConsumerState<SyncDashboardView> {
       ScaffoldMessenger.of(
         context,
       ).showSnackBar(SnackBar(content: Text('同步失败: $e')));
+      print('同步失败: $e');
     } finally {
       setState(() => _isLoading = false);
     }

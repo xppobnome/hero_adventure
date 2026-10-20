@@ -65,6 +65,14 @@ class SyncRepo {
     final jsonString = jsonEncode(snapshot);
     final bytesData = utf8.encode(jsonString);
 
+    // 先确保远端目录存在（坚果云上传到不存在目录会报 409 AncestorsNotFound）。
+    await _ensureRemoteDirectory(
+      url: url,
+      username: username,
+      password: password,
+      directory: directory,
+    );
+
     final uri = _buildUri(url, directory);
     final resp = await http
         .put(uri, headers: _headers(username, password), body: bytesData)
@@ -190,5 +198,73 @@ class SyncRepo {
     ).firstMatch(xml);
     if (match == null) return null;
     return match.group(1)!.trim();
+  }
+
+  /// 确保远端目录存在（不存在则逐级创建）。
+  ///
+  /// 坚果云上传到不存在的目录会返回 409 AncestorsNotFound，
+  /// 因此上传前需用 MKCOL 逐级创建目录。
+  /// MKCOL 状态码约定：201=创建成功，405=已存在，409=父目录不存在。
+  Future<void> _ensureRemoteDirectory({
+    required String url,
+    required String username,
+    required String password,
+    required String directory,
+  }) async {
+    final dir = _normalizeDirectory(directory);
+    if (dir == '/' || dir.isEmpty) return; // 根目录无需创建
+
+    final client = http.Client();
+    try {
+      // 逐级创建：/HeroAdventure 拆成 /Hero、/Hero/Adventure 等
+      final segments = dir.split('/').where((s) => s.isNotEmpty).toList();
+
+      var current = '';
+      for (final seg in segments) {
+        current = '$current/$seg';
+        final ok = await _tryMkdir(client, url, current, username, password);
+        if (!ok) {
+          throw Exception('WebDAV 创建目录失败：$current');
+        }
+      }
+    } finally {
+      client.close();
+    }
+  }
+
+  /// 创建单个目录；返回 true 表示成功或已存在。
+  Future<bool> _tryMkdir(
+    http.Client client,
+    String url,
+    String dirPath,
+    String username,
+    String password,
+  ) async {
+    var base = url.trim();
+    if (!base.endsWith('/')) base = '$base/';
+    final fullPath = '${base.replaceFirst(RegExp(r'/+$'), '')}$dirPath/';
+    final uri = Uri.parse(fullPath);
+
+    final request = http.Request('MKCOL', uri);
+    request.headers.addAll(_headers(username, password));
+
+    final streamed = await client
+        .send(request)
+        .timeout(const Duration(seconds: 15));
+    final resp = await http.Response.fromStream(streamed);
+
+    // 201=创建成功，405=目录已存在（视为成功）
+    return resp.statusCode == 201 || resp.statusCode == 405;
+  }
+
+  /// 规范化目录路径：去掉首尾空格，补前导斜杠，去掉末尾斜杠。
+  static String _normalizeDirectory(String dir) {
+    var d = dir.trim();
+    if (d.isEmpty) return '/';
+    if (!d.startsWith('/')) d = '/$d';
+    while (d.length > 1 && d.endsWith('/')) {
+      d = d.substring(0, d.length - 1);
+    }
+    return d;
   }
 }
