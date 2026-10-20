@@ -53,7 +53,8 @@ class SyncRepo {
   }
 
   // 备份全量数据到 WebDAV。
-  // 快照中写入 uploadedAt 字段（上传日期时间），供启动时判断云端数据是否为最新版。
+  // 上传后通过 PROPFIND 读取远端文件的修改时间（getlastmodified），
+  // 作为数据版本判断依据（无需在 JSON 快照中写自定义字段）。
   Future<void> backupToWebDav({
     required String url,
     required String username,
@@ -61,10 +62,6 @@ class SyncRepo {
     required String directory,
   }) async {
     final snapshot = _localStorage.buildSnapshot();
-    // 记录本次上传的日期时间，作为数据版本判断依据。
-    final uploadedAt = DateTime.now().toIso8601String();
-    snapshot['uploadedAt'] = uploadedAt;
-
     final jsonString = jsonEncode(snapshot);
     final bytesData = utf8.encode(jsonString);
 
@@ -73,12 +70,20 @@ class SyncRepo {
         .put(uri, headers: _headers(username, password), body: bytesData)
         .timeout(const Duration(seconds: 30));
 
-    if (resp.statusCode >= 200 && resp.statusCode < 300) {
-      // 上传成功后，本机记录最近一次同步的云端时间戳。
-      await _localStorage.setLastSyncedUploadAt(uploadedAt);
-      return;
+    if (resp.statusCode < 200 || resp.statusCode >= 300) {
+      throw Exception('WebDAV 上传失败：HTTP ${resp.statusCode} ${resp.body}');
     }
-    throw Exception('WebDAV 上传失败：HTTP ${resp.statusCode} ${resp.body}');
+
+    // 上传成功后，读取远端文件的修改时间戳，本机记录作为「最近同步版本」。
+    final modified = await fetchRemoteModified(
+      url: url,
+      username: username,
+      password: password,
+      directory: directory,
+    );
+    if (modified != null) {
+      await _localStorage.setLastSyncedUploadAt(modified);
+    }
   }
 
   // 从 WebDAV 恢复全量数据
@@ -97,10 +102,15 @@ class SyncRepo {
 
     await _localStorage.restoreSnapshot(snapshot);
 
-    // 恢复后记录云端时间戳，避免启动检查时重复提示。
-    final uploadedAt = snapshot['uploadedAt'] as String?;
-    if (uploadedAt != null) {
-      await _localStorage.setLastSyncedUploadAt(uploadedAt);
+    // 恢复后记录远端文件修改时间戳，避免启动检查时重复提示。
+    final modified = await fetchRemoteModified(
+      url: url,
+      username: username,
+      password: password,
+      directory: directory,
+    );
+    if (modified != null) {
+      await _localStorage.setLastSyncedUploadAt(modified);
     }
   }
 
@@ -122,21 +132,63 @@ class SyncRepo {
     return jsonDecode(utf8.decode(resp.bodyBytes)) as Map<String, dynamic>;
   }
 
-  /// 读取云端数据版本（上传日期时间）。
+  /// 读取云端文件的最后修改时间（WebDAV 的 getlastmodified 属性）。
   ///
-  /// 云端无数据或无 uploadedAt 字段时返回 null。
-  Future<String?> fetchRemoteUploadAt({
+  /// 通过 PROPFIND 请求获取，这是坚果云等 WebDAV 服务原生支持的版本依据，
+  /// 返回 ISO 8601 时间字符串（如 '2026-03-02T10:00:00Z'）。
+  /// 云端无此文件时返回 null。
+  Future<String?> fetchRemoteModified({
     required String url,
     required String username,
     required String password,
     required String directory,
   }) async {
-    final snapshot = await fetchRemoteSnapshot(
-      url: url,
-      username: username,
-      password: password,
-      directory: directory,
-    );
-    return snapshot['uploadedAt'] as String?;
+    final uri = _buildUri(url, directory);
+    // PROPFIND 请求体：请求 getlastmodified 属性。
+    const body = '''
+<?xml version="1.0" encoding="utf-8" ?>
+<D:propfind xmlns:D="DAV:">
+  <D:prop>
+    <D:getlastmodified/>
+  </D:prop>
+</D:propfind>''';
+
+    final headers = _headers(username, password);
+    headers['Depth'] = '0';
+    headers['Content-Type'] = 'application/xml; charset=utf-8';
+
+    // http 包没有 propfind 快捷方法，用 Request + send 发送任意 method。
+    final request = http.Request('PROPFIND', uri);
+    request.headers.addAll(headers);
+    request.body = body;
+
+    final client = http.Client();
+    try {
+      final streamed = await client
+          .send(request)
+          .timeout(const Duration(seconds: 30));
+      final resp = await http.Response.fromStream(streamed);
+
+      // 404 表示远端文件不存在。
+      if (resp.statusCode == 404) return null;
+      if (resp.statusCode < 200 || resp.statusCode >= 300) {
+        throw Exception('WebDAV 读取属性失败：HTTP ${resp.statusCode} ${resp.body}');
+      }
+
+      // 从返回的 XML 中提取 <getlastmodified> 的值。
+      return _parseLastModified(resp.body);
+    } finally {
+      client.close();
+    }
+  }
+
+  /// 从 PROPFIND 返回的 XML 中提取 getlastmodified 时间。
+  static String? _parseLastModified(String xml) {
+    final match = RegExp(
+      r'<[^>]*getlastmodified[^>]*>([^<]+)<',
+      caseSensitive: false,
+    ).firstMatch(xml);
+    if (match == null) return null;
+    return match.group(1)!.trim();
   }
 }

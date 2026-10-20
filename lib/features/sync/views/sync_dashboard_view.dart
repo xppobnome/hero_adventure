@@ -31,6 +31,7 @@ class _SyncDashboardViewState extends ConsumerState<SyncDashboardView> {
   );
 
   bool _isLoading = false;
+  bool _obscurePwd = true; // 授权密码是否隐藏（小眼睛切换）
 
   @override
   void initState() {
@@ -261,11 +262,23 @@ class _SyncDashboardViewState extends ConsumerState<SyncDashboardView> {
                       SizedBox(height: 16.h),
                       TextField(
                         controller: _pwdController,
-                        obscureText: true,
+                        obscureText: _obscurePwd,
                         decoration: InputDecoration(
                           labelText: '授权密码',
                           border: OutlineInputBorder(
                             borderRadius: BorderRadius.circular(8.r),
+                          ),
+                          suffixIcon: IconButton(
+                            icon: Icon(
+                              _obscurePwd
+                                  ? Icons.visibility_off_outlined
+                                  : Icons.visibility_outlined,
+                              size: 22,
+                            ),
+                            tooltip: _obscurePwd ? '显示密码' : '隐藏密码',
+                            onPressed: () {
+                              setState(() => _obscurePwd = !_obscurePwd);
+                            },
                           ),
                         ),
                       ),

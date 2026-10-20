@@ -12,9 +12,9 @@ import '../../domain/providers/task_provider.dart';
 
 /// WebDAV 云端数据版本检查服务。
 ///
-/// 绑定 WebDAV 且开启「启动时检查数据版本」后，每次启动都会拉取云端
-/// 快照的 uploadedAt（上传日期时间），与本机最近一次同步记录比较：
-/// 云端更新时弹窗询问是否「更新并合并数据」。
+/// 绑定 WebDAV 且开启「启动时检查数据版本」后，每次启动都会通过 PROPFIND
+/// 读取云端文件的最后修改时间（getlastmodified），与本机最近一次同步记录比较
+/// （加 1 秒容差）：云端更新时弹窗询问是否「更新并合并数据」。
 class DataSyncChecker {
   DataSyncChecker._();
 
@@ -86,29 +86,31 @@ class DataSyncChecker {
     final (url, user, pwd, dir) = storage.getWebDavConfig();
     final syncRepo = SyncRepo(storage);
 
-    final remoteUploadAt = await syncRepo.fetchRemoteUploadAt(
+    // 远端文件的最后修改时间（WebDAV getlastmodified，坚果云原生支持）。
+    final remoteModified = await syncRepo.fetchRemoteModified(
       url: url,
       username: user,
       password: pwd,
       directory: dir,
     );
-    if (remoteUploadAt == null) return null; // 云端无版本信息
+    if (remoteModified == null) return null; // 云端无此文件
 
     final lastSynced = storage.getLastSyncedUploadAt();
     if (lastSynced.isNotEmpty) {
-      // 云端时间戳与本机记录的一致（或更旧），说明无新数据。
-      if (DateTime.tryParse(
-            remoteUploadAt,
-          )!.isBefore(DateTime.tryParse(lastSynced)!) ||
-          remoteUploadAt == lastSynced) {
-        return null;
+      final remote = DateTime.tryParse(remoteModified);
+      final local = DateTime.tryParse(lastSynced);
+      if (remote != null && local != null) {
+        // 加 1 秒容差：避免系统时间微小差异导致误判。
+        if (remote.difference(local).inSeconds <= 1) {
+          return null; // 云端不新于本机（相同或更旧）
+        }
       }
     } else if (lastSynced.isEmpty) {
       // 本机从未同步过，无法判断；默认视为有云端数据，提示一次。
       // 用户「更新并合并」或「暂不」后都会写入时间戳，之后不再重复提示。
     }
 
-    return RemoteNewer(uploadAt: remoteUploadAt);
+    return RemoteNewer(uploadAt: remoteModified);
   }
 
   /// 版本提示弹窗：展示本机与云端的数据时间，提供「更新并合并」/「暂不更新」。
