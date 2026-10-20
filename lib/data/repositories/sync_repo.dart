@@ -26,28 +26,31 @@ class SyncRepo {
     return '$d$remoteFileName';
   }
 
-  /// 组装带 Basic Auth 的完整 URL。
-  static Uri _buildUri(
-    String url,
-    String dir,
-    String username,
-    String password,
-  ) {
+  /// 组装完整的远端文件 URL（不含认证信息，认证通过 Header 传递）。
+  static Uri _buildUri(String url, String dir) {
     var base = url.trim();
     if (!base.endsWith('/')) base = '$base/';
     // 去掉末尾多余的斜杠，避免 //。
     final filePath = _remoteFilePath(dir);
     final fullPath = '${base.replaceFirst(RegExp(r'/+$'), '')}$filePath';
-
-    final uri = Uri.parse(fullPath);
-    return uri.replace(
-      userInfo: username.isEmpty ? null : '$username:$password',
-    );
+    return Uri.parse(fullPath);
   }
 
-  Map<String, String> _headers() => {
-    'Content-Type': 'application/json; charset=utf-8',
-  };
+  /// 生成请求头：JSON content-type + HTTP Basic Auth。
+  ///
+  /// 认证信息用 Authorization 头（Base64 编码）传递，而非塞进 URL 的 userInfo，
+  /// 避免账号/密码含特殊字符（@ : # % 中文等）时 Uri.parse 抛
+  /// FormatException: Invalid character。
+  Map<String, String> _headers(String username, String password) {
+    final headers = <String, String>{
+      'Content-Type': 'application/json; charset=utf-8',
+    };
+    if (username.isNotEmpty) {
+      final credentials = base64Encode(utf8.encode('$username:$password'));
+      headers['Authorization'] = 'Basic $credentials';
+    }
+    return headers;
+  }
 
   // 备份全量数据到 WebDAV。
   // 快照中写入 uploadedAt 字段（上传日期时间），供启动时判断云端数据是否为最新版。
@@ -65,9 +68,9 @@ class SyncRepo {
     final jsonString = jsonEncode(snapshot);
     final bytesData = utf8.encode(jsonString);
 
-    final uri = _buildUri(url, directory, username, password);
+    final uri = _buildUri(url, directory);
     final resp = await http
-        .put(uri, headers: _headers(), body: bytesData)
+        .put(uri, headers: _headers(username, password), body: bytesData)
         .timeout(const Duration(seconds: 30));
 
     if (resp.statusCode >= 200 && resp.statusCode < 300) {
@@ -108,8 +111,10 @@ class SyncRepo {
     required String password,
     required String directory,
   }) async {
-    final uri = _buildUri(url, directory, username, password);
-    final resp = await http.get(uri).timeout(const Duration(seconds: 30));
+    final uri = _buildUri(url, directory);
+    final resp = await http
+        .get(uri, headers: _headers(username, password))
+        .timeout(const Duration(seconds: 30));
 
     if (resp.statusCode != 200) {
       throw Exception('WebDAV 读取失败：HTTP ${resp.statusCode} ${resp.body}');
