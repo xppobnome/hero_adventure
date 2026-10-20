@@ -29,10 +29,10 @@ class _QrSyncViewState extends ConsumerState<QrSyncView> {
   bool _showScanner = false;
   String? _qrData;
 
-  /// 构建当前全量数据快照的二维码字符串。
-  String _buildSnapshotJson() {
+  /// 构建当前全量数据快照的二维码字符串（异步：需压缩内嵌图片）。
+  Future<String> _buildSnapshotJson() async {
     final storage = ref.read(storageProvider);
-    return jsonEncode(storage.buildSnapshot());
+    return jsonEncode(await storage.buildSnapshot());
   }
 
   /// 刷新所有业务 Provider，让内存态与恢复后的本地数据对齐。
@@ -59,7 +59,10 @@ class _QrSyncViewState extends ConsumerState<QrSyncView> {
       if (mounted) {
         setState(() => _showScanner = false);
         ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('数据导入成功！'), backgroundColor: Colors.green),
+          const SnackBar(
+            content: Text('数据导入成功！'),
+            backgroundColor: Colors.green,
+          ),
         );
       }
     } catch (e) {
@@ -135,69 +138,80 @@ class _QrSyncViewState extends ConsumerState<QrSyncView> {
   }
 
   Widget _buildGenerator() {
-    final qrData = _buildSnapshotJson();
-    return SingleChildScrollView(
-      padding: EdgeInsets.all(24.w),
-      child: Column(
-        children: [
-          Text(
-            '生成数据快照二维码',
-            style: TextStyle(fontSize: 20.sp, fontWeight: FontWeight.bold),
+    return FutureBuilder<String>(
+      future: _buildSnapshotJson(),
+      builder: (context, snapshot) {
+        if (!snapshot.hasData) {
+          return const Center(child: CircularProgressIndicator());
+        }
+        final qrData = snapshot.data!;
+        return SingleChildScrollView(
+          padding: EdgeInsets.all(24.w),
+          child: Column(
+            children: [
+              Text(
+                '生成数据快照二维码',
+                style: TextStyle(fontSize: 20.sp, fontWeight: FontWeight.bold),
+              ),
+              SizedBox(height: 12.h),
+              Text(
+                '在另一台设备上扫描此二维码，即可导入全部家庭数据（儿童档案、任务、奖励、打卡记录）。',
+                style: TextStyle(fontSize: 14.sp, color: Colors.grey.shade600),
+                textAlign: TextAlign.center,
+              ),
+              SizedBox(height: 32.h),
+              Container(
+                padding: EdgeInsets.all(24.w),
+                decoration: BoxDecoration(
+                  color: Colors.white,
+                  borderRadius: BorderRadius.circular(16.r),
+                  boxShadow: [
+                    BoxShadow(
+                      color: Colors.black.withValues(alpha: 0.1),
+                      blurRadius: 12,
+                    ),
+                  ],
+                ),
+                child: QrImageView(
+                  data: qrData,
+                  version: QrVersions.auto,
+                  size: 280.w,
+                  backgroundColor: Colors.white,
+                ),
+              ),
+              SizedBox(height: 24.h),
+              Text(
+                '数据快照大小：${qrData.length} 字符',
+                style: TextStyle(fontSize: 12.sp, color: Colors.grey),
+              ),
+              SizedBox(height: 32.h),
+              OutlinedButton.icon(
+                icon: const Icon(Icons.file_upload_outlined),
+                label: const Text('导出到本地文件'),
+                style: OutlinedButton.styleFrom(
+                  padding: EdgeInsets.symmetric(vertical: 14.h),
+                ),
+                onPressed: _exportToFile,
+              ),
+              SizedBox(height: 12.h),
+              ElevatedButton.icon(
+                icon: const Icon(Icons.file_download_outlined),
+                label: const Text('从本地文件导入'),
+                style: ElevatedButton.styleFrom(
+                  padding: EdgeInsets.symmetric(vertical: 14.h),
+                ),
+                onPressed: _importFromFile,
+              ),
+              SizedBox(height: 8.h),
+              Text(
+                '导出会生成 JSON 备份文件；导入会覆盖当前全部家庭数据。',
+                style: TextStyle(fontSize: 12.sp, color: Colors.grey),
+                textAlign: TextAlign.center,
+              ),
+            ],
           ),
-          SizedBox(height: 12.h),
-          Text(
-            '在另一台设备上扫描此二维码，即可导入全部家庭数据（儿童档案、任务、奖励、打卡记录）。',
-            style: TextStyle(fontSize: 14.sp, color: Colors.grey.shade600),
-            textAlign: TextAlign.center,
-          ),
-          SizedBox(height: 32.h),
-          Container(
-            padding: EdgeInsets.all(24.w),
-            decoration: BoxDecoration(
-              color: Colors.white,
-              borderRadius: BorderRadius.circular(16.r),
-              boxShadow: [
-                BoxShadow(color: Colors.black.withValues(alpha: 0.1), blurRadius: 12),
-              ],
-            ),
-            child: QrImageView(
-              data: qrData,
-              version: QrVersions.auto,
-              size: 280.w,
-              backgroundColor: Colors.white,
-            ),
-          ),
-          SizedBox(height: 24.h),
-          Text(
-            '数据快照大小：${qrData.length} 字符',
-            style: TextStyle(fontSize: 12.sp, color: Colors.grey),
-          ),
-          SizedBox(height: 32.h),
-          OutlinedButton.icon(
-            icon: const Icon(Icons.file_upload_outlined),
-            label: const Text('导出到本地文件'),
-            style: OutlinedButton.styleFrom(
-              padding: EdgeInsets.symmetric(vertical: 14.h),
-            ),
-            onPressed: _exportToFile,
-          ),
-          SizedBox(height: 12.h),
-          ElevatedButton.icon(
-            icon: const Icon(Icons.file_download_outlined),
-            label: const Text('从本地文件导入'),
-            style: ElevatedButton.styleFrom(
-              padding: EdgeInsets.symmetric(vertical: 14.h),
-            ),
-            onPressed: _importFromFile,
-          ),
-          SizedBox(height: 8.h),
-          Text(
-            '导出会生成 JSON 备份文件；导入会覆盖当前全部家庭数据。',
-            style: TextStyle(fontSize: 12.sp, color: Colors.grey),
-            textAlign: TextAlign.center,
-          ),
-        ],
-      ),
+        );
+      },
     );
   }
 

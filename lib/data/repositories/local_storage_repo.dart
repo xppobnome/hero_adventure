@@ -1,5 +1,7 @@
 import 'dart:convert';
 import 'package:hive_flutter/hive_flutter.dart';
+import '../../core/utils/image_compressor.dart';
+import '../models/child_profile.dart';
 import '../models/family_profile.dart';
 import '../models/task.dart';
 import '../models/reward_item.dart';
@@ -201,24 +203,69 @@ class LocalStorageRepo {
   Future<void> setLastSyncedUploadAt(String isoTime) =>
       _box.put(keyLastSyncedUploadAt, isoTime);
 
-  // ===== 全量快照 (供二维码/WebDAV 同步) =====
-  Map<String, dynamic> buildSnapshot() {
+  // ===== 全量快照 (供二维码/WebDAV/本地备份 同步) =====
+  //
+  // 快照中额外包含 images 字段：把本地图片（儿童头像 avatarImage、打卡凭证
+  // proofImage）压缩为 base64 内嵌，使图片内容能随快照一起同步，而非仅同步
+  // 一个换设备后失效的本地路径。三个同步通道共用此方法。
+  Future<Map<String, dynamic>> buildSnapshot() async {
+    final family = getFamilyProfile();
+    final checkIns = getCheckIns();
+
+    // 收集所有需要同步的图片路径。
+    final imagePaths = <String>[];
+    final children = family?.children ?? const <ChildProfile>[];
+    for (final c in children) {
+      if (c.avatarImage.isNotEmpty) imagePaths.add(c.avatarImage);
+    }
+    for (final c in checkIns) {
+      final p = c.proofImage;
+      if (p != null && p.isNotEmpty) imagePaths.add(p);
+    }
+
+    // 去重后压缩成 base64，key 用原路径。
+    final images = <String, String>{};
+    for (final path in imagePaths.toSet()) {
+      final base64 = await ImageCompressor.compressToBase64(path);
+      if (base64 != null) {
+        images[path] = base64;
+      }
+    }
+
     return {
-      'family': getFamilyProfile()?.toJson(),
+      'family': family?.toJson(),
       'tasks': getTasks().map((t) => t.toJson()).toList(),
       'rewards': getRewards().map((r) => r.toJson()).toList(),
-      'checkIns': getCheckIns().map((c) => c.toJson()).toList(),
+      'checkIns': checkIns.map((c) => c.toJson()).toList(),
       'exchanges': getExchanges().map((e) => e.toJson()).toList(),
+      'images': images,
       'timestamp': DateTime.now().toIso8601String(),
     };
   }
 
   /// 从快照 Map 恢复全量数据。
   Future<void> restoreSnapshot(Map<String, dynamic> snapshot) async {
+    // 先还原图片：把快照中的 base64 图片写回本地文件，
+    // 得到「原路径 → 新路径」的映射，用于更新 family/checkIns 里的图片字段。
+    final imageMap = await _restoreImages(snapshot);
+
     if (snapshot['family'] != null) {
-      await saveFamilyProfile(
-        FamilyProfile.fromJson(Map<String, dynamic>.from(snapshot['family'])),
+      var family = FamilyProfile.fromJson(
+        Map<String, dynamic>.from(snapshot['family']),
       );
+      // 更新每个儿童的头像路径（如果该图片被还原到了新位置）。
+      if (imageMap.isNotEmpty) {
+        family = FamilyProfile(
+          familyId: family.familyId,
+          currentTheme: family.currentTheme,
+          pinCode: family.pinCode,
+          children: family.children.map((c) {
+            final newPath = imageMap[c.avatarImage];
+            return newPath == null ? c : c.copyWith(avatarImage: newPath);
+          }).toList(),
+        );
+      }
+      await saveFamilyProfile(family);
     }
     if (snapshot['tasks'] != null) {
       await saveTasks(
@@ -235,11 +282,18 @@ class LocalStorageRepo {
       );
     }
     if (snapshot['checkIns'] != null) {
-      await saveCheckIns(
-        (snapshot['checkIns'] as List)
-            .map((e) => CheckInRecord.fromJson(Map<String, dynamic>.from(e)))
-            .toList(),
-      );
+      final records = (snapshot['checkIns'] as List)
+          .map((e) => CheckInRecord.fromJson(Map<String, dynamic>.from(e)))
+          .toList();
+      // 更新打卡凭证图片路径。
+      final restored = imageMap.isNotEmpty
+          ? records.map((r) {
+              final old = r.proofImage;
+              final newPath = old == null ? null : imageMap[old];
+              return newPath == null ? r : r.copyWith(proofImage: newPath);
+            }).toList()
+          : records;
+      await saveCheckIns(restored);
     }
     if (snapshot['exchanges'] != null) {
       await saveExchanges(
@@ -248,5 +302,41 @@ class LocalStorageRepo {
             .toList(),
       );
     }
+  }
+
+  /// 把快照 images 字段中的 base64 图片写回本地文件。
+  ///
+  /// 返回「原路径 → 新路径」映射。文件名带序号，避免重名覆盖。
+  Future<Map<String, String>> _restoreImages(
+    Map<String, dynamic> snapshot,
+  ) async {
+    final images = snapshot['images'];
+    if (images is! Map) return const {};
+
+    final result = <String, String>{};
+    var index = 0;
+    for (final entry in images.entries) {
+      final base64 = entry.value;
+      if (base64 is! String || base64.isEmpty) continue;
+      index++;
+      final ext = _inferImageExt(entry.key as String);
+      final newPath = await ImageCompressor.saveBase64ToFile(
+        base64,
+        fileName: 'img_${DateTime.now().millisecondsSinceEpoch}_$index$ext',
+      );
+      if (newPath != null) {
+        result[entry.key as String] = newPath;
+      }
+    }
+    return result;
+  }
+
+  /// 根据原路径推断图片扩展名（默认 .jpg）。
+  static String _inferImageExt(String path) {
+    final lower = path.toLowerCase();
+    if (lower.endsWith('.png')) return '.png';
+    if (lower.endsWith('.webp')) return '.webp';
+    if (lower.endsWith('.gif')) return '.gif';
+    return '.jpg';
   }
 }

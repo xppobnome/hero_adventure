@@ -61,7 +61,7 @@ class SyncRepo {
     required String password,
     required String directory,
   }) async {
-    final snapshot = _localStorage.buildSnapshot();
+    final snapshot = await _localStorage.buildSnapshot();
     final jsonString = jsonEncode(snapshot);
     final bytesData = utf8.encode(jsonString);
 

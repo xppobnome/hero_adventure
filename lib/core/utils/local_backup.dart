@@ -25,7 +25,7 @@ class LocalBackup {
   ///
   /// 返回保存路径；用户取消时返回 null。
   static Future<String?> exportToFile(LocalStorageRepo storage) async {
-    final jsonString = jsonEncode(storage.buildSnapshot());
+    final jsonString = jsonEncode(await storage.buildSnapshot());
     final bytes = Uint8List.fromList(utf8.encode(jsonString));
 
     final path = await FilePicker.platform.saveFile(
