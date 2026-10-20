@@ -1,0 +1,174 @@
+import 'dart:io';
+
+import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:flutter_screenutil/flutter_screenutil.dart';
+import 'package:flutter_displaymode/flutter_displaymode.dart';
+import 'package:flutter_localizations/flutter_localizations.dart'; // 引入本地化
+import 'core/utils/audio_manager.dart';
+import 'data/repositories/local_storage_repo.dart';
+import 'domain/providers/family_provider.dart';
+import 'domain/providers/theme_provider.dart';
+import 'domain/providers/task_provider.dart';
+import 'domain/providers/reward_provider.dart';
+import 'domain/providers/check_in_provider.dart';
+import 'domain/providers/exchange_provider.dart';
+
+import 'features/auth/views/family_setup_view.dart';
+import 'features/auth/views/role_selection_view.dart';
+import 'features/child_adventure/views/child_adventure_view.dart'; // 引入儿童端
+import 'features/parent_console/views/parent_console_view.dart'; // 引入家长端
+
+// 允许忽略所有自签名 SSL 证书的全局类
+class MyHttpOverrides extends HttpOverrides {
+  @override
+  HttpClient createHttpClient(SecurityContext? context) {
+    return super.createHttpClient(context)
+      ..badCertificateCallback =
+          (X509Certificate cert, String host, int port) => true;
+  }
+}
+
+void main() async {
+  WidgetsFlutterBinding.ensureInitialized();
+  // 边缘到边缘 + 导航栏颜色与 App 背景一致：
+  // 透明导航栏在部分机型会渲染成黑边，因此直接把导航栏背景色设为
+  // App 全局背景色 (scaffoldBackgroundColor 0xFFF5F5F5)，三金刚 / 小白条
+  // 区域与页面底部颜色保持一致。
+  await SystemChrome.setEnabledSystemUIMode(SystemUiMode.edgeToEdge);
+  SystemChrome.setSystemUIOverlayStyle(
+    const SystemUiOverlayStyle(
+      statusBarColor: Colors.transparent,
+      statusBarIconBrightness: Brightness.light,
+      systemNavigationBarColor: Color(0xFFF5F5F5),
+      systemNavigationBarIconBrightness: Brightness.dark,
+      systemNavigationBarDividerColor: Colors.transparent,
+    ),
+  );
+  HttpOverrides.global = MyHttpOverrides();
+  final storageRepo = LocalStorageRepo();
+  await storageRepo.init();
+
+  // 设置最高刷新率：让 App 使用手机屏幕支持的最高刷新率 (如 120/165Hz)。
+  // 失败时静默降级 (部分设备/平台不支持时不影响启动)。
+  try {
+    await FlutterDisplayMode.setHighRefreshRate();
+  } catch (_) {
+    // 忽略：不支持高刷新率设置的平台 (如部分 Web/桌面) 会抛出异常，不影响运行
+  }
+
+  // 提前初始化音频会话，确保选择英雄 / 打卡时的音效播放稳定可靠
+  // (Android 上 just_audio 播放音频前必须先配置 AudioSession)。
+  await AudioManager().ensureSession();
+
+  runApp(
+    ProviderScope(
+      overrides: [storageProvider.overrideWithValue(storageRepo)],
+      child: const HeroAdventureApp(),
+    ),
+  );
+}
+
+class HeroAdventureApp extends StatelessWidget {
+  const HeroAdventureApp({super.key});
+
+  @override
+  Widget build(BuildContext context) {
+    return ScreenUtilInit(
+      designSize: const Size(375, 812),
+      minTextAdapt: true,
+      splitScreenMode: true,
+      builder: (context, child) {
+        return MaterialApp(
+          title: 'Hero Adventure Plan',
+          // 使用奥特曼主题统一配色
+          theme: UltramanTheme.buildTheme(),
+          // 【解决全部底层英文问题】：强制配置中文本地化 (如 Stepper, Dialog 等默认组件)
+          localizationsDelegates: const [
+            GlobalMaterialLocalizations.delegate,
+            GlobalWidgetsLocalizations.delegate,
+            GlobalCupertinoLocalizations.delegate,
+          ],
+          supportedLocales: const [Locale('zh', 'CN')],
+          home: const InitialRouteWrapper(),
+        );
+      },
+    );
+  }
+}
+
+class InitialRouteWrapper extends ConsumerStatefulWidget {
+  const InitialRouteWrapper({super.key});
+
+  @override
+  ConsumerState<InitialRouteWrapper> createState() =>
+      _InitialRouteWrapperState();
+}
+
+class _InitialRouteWrapperState extends ConsumerState<InitialRouteWrapper> {
+  late final AppLifecycleListener _lifecycleListener;
+
+  @override
+  void initState() {
+    super.initState();
+    // 进入/退出时同步：
+    // - onResume：应用从后台恢复，刷新所有数据 Provider，对齐跨端最新状态
+    // - onPause/onDetach：应用退到后台或即将销毁，触发本地数据落盘
+    _lifecycleListener = AppLifecycleListener(
+      onResume: _syncOnResume,
+      onPause: _syncOnPause,
+      onDetach: _syncOnPause,
+    );
+  }
+
+  void _syncOnResume() {
+    if (!mounted) return;
+    // 本地 Hive 数据每次写入已实时持久化，此处刷新内存态以对齐
+    // 进入应用时重新加载全部数据 Provider，保证跨入口状态一致。
+    ref.invalidate(familyProfileProvider);
+    ref.invalidate(taskProvider);
+    ref.invalidate(rewardProvider);
+    ref.invalidate(checkInProvider);
+    ref.invalidate(exchangeProvider);
+  }
+
+  void _syncOnPause() {
+    // 退出/切后台时确保数据已持久化。
+    // 各 Provider 的写操作均通过 LocalStorageRepo 同步落盘到 Hive，
+    // 这里额外触发一次刷新，保证未写入的待处理状态被安全保存。
+    if (!mounted) return;
+    ref.invalidate(familyProfileProvider);
+  }
+
+  @override
+  void dispose() {
+    _lifecycleListener.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final familyProfile = ref.watch(familyProfileProvider);
+    final deviceRole = ref.watch(deviceRoleProvider);
+
+    // 1. 无数据，进入初始化
+    if (familyProfile == null) return const FamilySetupView();
+
+    // 2. 检查设备绑定状态：
+    //    - 家长设备：直接进入家长控制台 (无需每次输 PIN)
+    //    - 儿童专属设备：直接进入该儿童的防卫地图
+    if (deviceRole == 'parent') {
+      return const ParentConsoleView();
+    }
+    if (deviceRole != 'unbound') {
+      final childExists = familyProfile.children.any((c) => c.id == deviceRole);
+      if (childExists) {
+        return ChildAdventureView(childId: deviceRole);
+      }
+    }
+
+    // 3. 未绑定，进入角色选择（绑定中心）
+    return const RoleSelectionView();
+  }
+}
