@@ -45,6 +45,10 @@ dependencies:
   json_annotation: ^4.8.1
   # 高刷新率支持 (让 App 使用手机屏幕最高刷新率，如 120/165Hz)
   flutter_displaymode: ^0.7.0
+  # 应用内打开更新下载链接
+  url_launcher: ^6.3.0
+  # 读取应用版本号 (检查更新时对比远程版本)
+  package_info_plus: ^8.0.0
   # The following adds the Cupertino Icons font to your application.
   # Use with the CupertinoIcons class for iOS style icons.
   cupertino_icons: ^1.0.8

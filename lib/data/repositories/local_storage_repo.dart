@@ -37,7 +37,9 @@ class LocalStorageRepo {
 
   // ===== 任务列表存取 =====
   Future<void> saveTasks(List<Task> tasks) async {
-    final List<Map<String, dynamic>> jsonList = tasks.map((t) => t.toJson()).toList();
+    final List<Map<String, dynamic>> jsonList = tasks
+        .map((t) => t.toJson())
+        .toList();
     await _box.put(keyTasks, jsonEncode(jsonList));
   }
 
@@ -45,14 +47,18 @@ class LocalStorageRepo {
     final data = _box.get(keyTasks);
     if (data != null) {
       final List<dynamic> jsonList = jsonDecode(data);
-      return jsonList.map((e) => Task.fromJson(Map<String, dynamic>.from(e))).toList();
+      return jsonList
+          .map((e) => Task.fromJson(Map<String, dynamic>.from(e)))
+          .toList();
     }
     return [];
   }
 
   // ===== 奖励商城存取 =====
   Future<void> saveRewards(List<RewardItem> rewards) async {
-    final List<Map<String, dynamic>> jsonList = rewards.map((r) => r.toJson()).toList();
+    final List<Map<String, dynamic>> jsonList = rewards
+        .map((r) => r.toJson())
+        .toList();
     await _box.put(keyRewards, jsonEncode(jsonList));
   }
 
@@ -60,14 +66,18 @@ class LocalStorageRepo {
     final data = _box.get(keyRewards);
     if (data != null) {
       final List<dynamic> jsonList = jsonDecode(data);
-      return jsonList.map((e) => RewardItem.fromJson(Map<String, dynamic>.from(e))).toList();
+      return jsonList
+          .map((e) => RewardItem.fromJson(Map<String, dynamic>.from(e)))
+          .toList();
     }
     return [];
   }
 
   // ===== 打卡记录存取 (本次新增) =====
   Future<void> saveCheckIns(List<CheckInRecord> records) async {
-    final List<Map<String, dynamic>> jsonList = records.map((r) => r.toJson()).toList();
+    final List<Map<String, dynamic>> jsonList = records
+        .map((r) => r.toJson())
+        .toList();
     await _box.put(keyCheckIns, jsonEncode(jsonList));
   }
 
@@ -84,7 +94,9 @@ class LocalStorageRepo {
 
   // ===== 兑换申请存取 (本次新增) =====
   Future<void> saveExchanges(List<RewardExchange> exchanges) async {
-    final List<Map<String, dynamic>> jsonList = exchanges.map((e) => e.toJson()).toList();
+    final List<Map<String, dynamic>> jsonList = exchanges
+        .map((e) => e.toJson())
+        .toList();
     await _box.put(keyExchanges, jsonEncode(jsonList));
   }
 
@@ -110,6 +122,73 @@ class LocalStorageRepo {
   String getDeviceRole() {
     return _box.get(keyDeviceRole) ?? 'unbound';
   }
+
+  // ===== 应用设置存取 (更新检查 / 数据版本检查 / WebDAV 配置) =====
+  static const String keyUpdateAutoCheck = 'update_auto_check'; // 自动检查更新开关
+  static const String keyUpdateIgnoredVersion =
+      'update_ignored_version'; // 「下个版本提醒我」忽略的版本号
+  static const String keyUpdatePermanentIgnored =
+      'update_permanently_ignored'; // 永久忽略更新
+  static const String keyWebDavUrl = 'webdav_url'; // WebDAV 地址
+  static const String keyWebDavUser = 'webdav_user'; // WebDAV 账号
+  static const String keyWebDavPwd = 'webdav_pwd'; // WebDAV 密码
+  static const String keyDataSyncAutoCheck =
+      'datasync_auto_check'; // 启动时检查云端数据版本开关
+  static const String keyLastSyncedUploadAt =
+      'last_synced_upload_at'; // 本机最近一次同步的云端时间戳
+
+  bool getUpdateAutoCheck() =>
+      _box.get(keyUpdateAutoCheck) as bool? ?? true; // 默认开启
+
+  Future<void> setUpdateAutoCheck(bool value) =>
+      _box.put(keyUpdateAutoCheck, value);
+
+  String getUpdateIgnoredVersion() =>
+      _box.get(keyUpdateIgnoredVersion) as String? ?? '';
+
+  Future<void> setUpdateIgnoredVersion(String version) =>
+      _box.put(keyUpdateIgnoredVersion, version);
+
+  bool getUpdatePermanentIgnored() =>
+      _box.get(keyUpdatePermanentIgnored) as bool? ?? false;
+
+  Future<void> setUpdatePermanentIgnored(bool value) =>
+      _box.put(keyUpdatePermanentIgnored, value);
+
+  String getWebDavUrl() => _box.get(keyWebDavUrl) as String? ?? '';
+
+  Future<void> saveWebDavConfig({
+    required String url,
+    required String username,
+    required String password,
+  }) async {
+    await _box.put(keyWebDavUrl, url);
+    await _box.put(keyWebDavUser, username);
+    await _box.put(keyWebDavPwd, password);
+  }
+
+  /// 是否已绑定 WebDAV（配置过有效地址即视为已绑定）。
+  bool hasWebDavConfig() => getWebDavUrl().trim().isNotEmpty;
+
+  (String, String, String) getWebDavConfig() {
+    return (
+      _box.get(keyWebDavUrl) as String? ?? '',
+      _box.get(keyWebDavUser) as String? ?? '',
+      _box.get(keyWebDavPwd) as String? ?? '',
+    );
+  }
+
+  bool getDataSyncAutoCheck() =>
+      _box.get(keyDataSyncAutoCheck) as bool? ?? true; // 默认开启
+
+  Future<void> setDataSyncAutoCheck(bool value) =>
+      _box.put(keyDataSyncAutoCheck, value);
+
+  String getLastSyncedUploadAt() =>
+      _box.get(keyLastSyncedUploadAt) as String? ?? '';
+
+  Future<void> setLastSyncedUploadAt(String isoTime) =>
+      _box.put(keyLastSyncedUploadAt, isoTime);
 
   // ===== 全量快照 (供二维码/WebDAV 同步) =====
   Map<String, dynamic> buildSnapshot() {

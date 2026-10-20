@@ -114,7 +114,9 @@ class _ChildAdventureViewState extends ConsumerState<ChildAdventureView> {
       }
     }
 
-    await ref.read(checkInProvider.notifier).addCheckIn(
+    await ref
+        .read(checkInProvider.notifier)
+        .addCheckIn(
           childId: widget.childId,
           taskId: task.id,
           requirePhoto: task.requirePhoto,
@@ -124,11 +126,9 @@ class _ChildAdventureViewState extends ConsumerState<ChildAdventureView> {
         );
 
     if (!task.requirePhoto) {
-      await ref.read(familyProfileProvider.notifier).updateChildExp(
-            widget.childId,
-            task.rewardExp,
-            task.rewardCoins,
-          );
+      await ref
+          .read(familyProfileProvider.notifier)
+          .updateChildExp(widget.childId, task.rewardExp, task.rewardCoins);
     }
 
     if (mounted) {
@@ -136,7 +136,10 @@ class _ChildAdventureViewState extends ConsumerState<ChildAdventureView> {
         setState(() => _isPlayingAnimation = false);
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
-            content: const Text('证据已上传！等待宇宙警备队 (家长) 审核', style: TextStyle(fontSize: 14)),
+            content: const Text(
+              '证据已上传！等待宇宙警备队 (家长) 审核',
+              style: TextStyle(fontSize: 14),
+            ),
             backgroundColor: UltramanTheme.blue,
           ),
         );
@@ -152,7 +155,10 @@ class _ChildAdventureViewState extends ConsumerState<ChildAdventureView> {
         });
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
-            content: Text('怪兽已被消灭！获得 ${task.rewardExp} 经验 / ${task.rewardCoins} 币', style: const TextStyle(fontSize: 14)),
+            content: Text(
+              '怪兽已被消灭！获得 ${task.rewardExp} 经验 / ${task.rewardCoins} 币',
+              style: const TextStyle(fontSize: 14),
+            ),
             backgroundColor: Colors.green,
           ),
         );
@@ -173,7 +179,10 @@ class _ChildAdventureViewState extends ConsumerState<ChildAdventureView> {
         return HeroShowcaseDialog(hero: hero, badgeText: '变身！');
       },
       transitionBuilder: (context, animation, secondaryAnimation, child) {
-        final curved = CurvedAnimation(parent: animation, curve: Curves.easeOutBack);
+        final curved = CurvedAnimation(
+          parent: animation,
+          curve: Curves.easeOutBack,
+        );
         return FadeTransition(
           opacity: animation,
           child: ScaleTransition(scale: curved, child: child),
@@ -204,7 +213,10 @@ class _ChildAdventureViewState extends ConsumerState<ChildAdventureView> {
     showDialog(
       context: context,
       builder: (ctx) => AlertDialog(
-        title: const Text('安全锁 - 解除设备绑定', style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
+        title: const Text(
+          '安全锁 - 解除设备绑定',
+          style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
+        ),
         content: TextField(
           controller: pinController,
           keyboardType: TextInputType.number,
@@ -213,17 +225,23 @@ class _ChildAdventureViewState extends ConsumerState<ChildAdventureView> {
           decoration: const InputDecoration(labelText: '请输入家长 PIN 码解锁'),
         ),
         actions: [
-          TextButton(onPressed: () => Navigator.pop(ctx), child: const Text('取消')),
+          TextButton(
+            onPressed: () => Navigator.pop(ctx),
+            child: const Text('取消'),
+          ),
           ElevatedButton(
             onPressed: () {
-              final correctPin = ref.read(familyProfileProvider)?.pinCode ?? '0000';
+              final correctPin =
+                  ref.read(familyProfileProvider)?.pinCode ?? '0000';
               if (pinController.text == correctPin) {
                 ref.read(deviceRoleProvider.notifier).state = 'unbound';
                 ref.read(storageProvider).saveDeviceRole('unbound');
                 Navigator.pop(ctx);
                 Navigator.pushReplacementNamed(context, '/');
               } else {
-                ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('警报！密码错误！')));
+                ScaffoldMessenger.of(
+                  context,
+                ).showSnackBar(const SnackBar(content: Text('警报！密码错误！')));
               }
             },
             child: const Text('确认解除'),
@@ -244,7 +262,9 @@ class _ChildAdventureViewState extends ConsumerState<ChildAdventureView> {
     return Scaffold(
       appBar: AppBar(
         title: Text(
-          _selectedTask == null ? '地球防卫图 - ${child.name}' : _selectedTask!.title,
+          _selectedTask == null
+              ? '地球防卫图 - ${child.name}'
+              : _selectedTask!.title,
           style: const TextStyle(fontSize: 18),
         ),
         automaticallyImplyLeading: false,
@@ -266,7 +286,9 @@ class _ChildAdventureViewState extends ConsumerState<ChildAdventureView> {
               onPressed: () {
                 Navigator.push(
                   context,
-                  MaterialPageRoute(builder: (_) => RewardShopView(childId: widget.childId)),
+                  MaterialPageRoute(
+                    builder: (_) => RewardShopView(childId: widget.childId),
+                  ),
                 );
               },
             ),
@@ -276,7 +298,21 @@ class _ChildAdventureViewState extends ConsumerState<ChildAdventureView> {
               onPressed: () {
                 Navigator.push(
                   context,
-                  MaterialPageRoute(builder: (_) => HeroGalleryView(childId: widget.childId)),
+                  MaterialPageRoute(
+                    builder: (_) => HeroGalleryView(childId: widget.childId),
+                  ),
+                );
+              },
+            ),
+            IconButton(
+              icon: const Icon(Icons.settings, size: 24),
+              tooltip: '设置',
+              onPressed: () {
+                Navigator.push(
+                  context,
+                  MaterialPageRoute(
+                    builder: (_) => ChildSettingsView(childId: widget.childId),
+                  ),
                 );
               },
             ),
@@ -369,7 +405,8 @@ class _ChildAdventureViewState extends ConsumerState<ChildAdventureView> {
             Navigator.push(
               context,
               MaterialPageRoute(
-                builder: (_) => MathQuizView(childId: widget.childId, task: task),
+                builder: (_) =>
+                    MathQuizView(childId: widget.childId, task: task),
               ),
             );
           } else {
@@ -386,7 +423,11 @@ class _ChildAdventureViewState extends ConsumerState<ChildAdventureView> {
                   color: UltramanTheme.blue,
                   shape: BoxShape.circle,
                 ),
-                child: const Icon(Icons.calculate, color: Colors.white, size: 28),
+                child: const Icon(
+                  Icons.calculate,
+                  color: Colors.white,
+                  size: 28,
+                ),
               )
             else
               MonsterAvatar(iconName: task.iconName, size: 50),
@@ -397,7 +438,10 @@ class _ChildAdventureViewState extends ConsumerState<ChildAdventureView> {
                 children: [
                   Text(
                     task.title,
-                    style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 16),
+                    style: const TextStyle(
+                      fontWeight: FontWeight.bold,
+                      fontSize: 16,
+                    ),
                   ),
                   const SizedBox(height: 4),
                   Text(
@@ -467,7 +511,10 @@ class _ChildAdventureViewState extends ConsumerState<ChildAdventureView> {
             SafeArea(
               top: false,
               child: Padding(
-                padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 12),
+                padding: const EdgeInsets.symmetric(
+                  horizontal: 24,
+                  vertical: 12,
+                ),
                 child: _buildCheckInButton(task, status),
               ),
             ),
@@ -492,7 +539,14 @@ class _ChildAdventureViewState extends ConsumerState<ChildAdventureView> {
             children: [
               Icon(Icons.check_circle, color: Colors.white, size: 22),
               SizedBox(width: 8),
-              Text('今日已通关', style: TextStyle(color: Colors.white, fontSize: 17, fontWeight: FontWeight.bold)),
+              Text(
+                '今日已通关',
+                style: TextStyle(
+                  color: Colors.white,
+                  fontSize: 17,
+                  fontWeight: FontWeight.bold,
+                ),
+              ),
             ],
           ),
         );
@@ -509,7 +563,14 @@ class _ChildAdventureViewState extends ConsumerState<ChildAdventureView> {
             children: [
               Icon(Icons.hourglass_top, color: Colors.white, size: 22),
               SizedBox(width: 8),
-              Text('待家长审核中', style: TextStyle(color: Colors.white, fontSize: 17, fontWeight: FontWeight.bold)),
+              Text(
+                '待家长审核中',
+                style: TextStyle(
+                  color: Colors.white,
+                  fontSize: 17,
+                  fontWeight: FontWeight.bold,
+                ),
+              ),
             ],
           ),
         );
@@ -521,7 +582,14 @@ class _ChildAdventureViewState extends ConsumerState<ChildAdventureView> {
             borderRadius: BorderRadius.circular(30),
           ),
           alignment: Alignment.center,
-          child: const Text('今日不可打卡', style: TextStyle(color: Colors.white, fontSize: 17, fontWeight: FontWeight.bold)),
+          child: const Text(
+            '今日不可打卡',
+            style: TextStyle(
+              color: Colors.white,
+              fontSize: 17,
+              fontWeight: FontWeight.bold,
+            ),
+          ),
         );
       default:
         return ElevatedButton(
@@ -529,9 +597,18 @@ class _ChildAdventureViewState extends ConsumerState<ChildAdventureView> {
           style: ElevatedButton.styleFrom(
             backgroundColor: UltramanTheme.blue,
             padding: const EdgeInsets.symmetric(vertical: 14),
-            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(30)),
+            shape: RoundedRectangleBorder(
+              borderRadius: BorderRadius.circular(30),
+            ),
           ),
-          child: const Text('光线攻击', style: TextStyle(color: Colors.white, fontSize: 17, fontWeight: FontWeight.bold)),
+          child: const Text(
+            '光线攻击',
+            style: TextStyle(
+              color: Colors.white,
+              fontSize: 17,
+              fontWeight: FontWeight.bold,
+            ),
+          ),
         );
     }
   }

@@ -28,6 +28,17 @@ class _SyncDashboardViewState extends ConsumerState<SyncDashboardView> {
 
   bool _isLoading = false;
 
+  @override
+  void initState() {
+    super.initState();
+    // 回填已保存的 WebDAV 配置（启动时数据版本检查依赖此持久化配置）。
+    final storage = ref.read(storageProvider);
+    final (url, user, pwd) = storage.getWebDavConfig();
+    if (url.isNotEmpty) _urlController.text = url;
+    if (user.isNotEmpty) _userController.text = user;
+    if (pwd.isNotEmpty) _pwdController.text = pwd;
+  }
+
   /// 导出全量数据快照到本地 JSON 文件。
   Future<void> _exportLocal() async {
     try {
@@ -79,6 +90,14 @@ class _SyncDashboardViewState extends ConsumerState<SyncDashboardView> {
           username: _userController.text,
           password: _pwdController.text,
         );
+        // 持久化 WebDAV 配置：供启动时数据版本自动检查使用。
+        await ref
+            .read(storageProvider)
+            .saveWebDavConfig(
+              url: _urlController.text,
+              username: _userController.text,
+              password: _pwdController.text,
+            );
         ScaffoldMessenger.of(
           context,
         ).showSnackBar(const SnackBar(content: Text('云端备份成功！')));

@@ -7,6 +7,8 @@ import 'package:flutter_screenutil/flutter_screenutil.dart';
 import 'package:flutter_displaymode/flutter_displaymode.dart';
 import 'package:flutter_localizations/flutter_localizations.dart'; // 引入本地化
 import 'core/utils/audio_manager.dart';
+import 'core/utils/data_sync_checker.dart';
+import 'core/utils/update_service.dart';
 import 'data/repositories/local_storage_repo.dart';
 import 'domain/providers/family_provider.dart';
 import 'domain/providers/theme_provider.dart';
@@ -120,6 +122,21 @@ class _InitialRouteWrapperState extends ConsumerState<InitialRouteWrapper> {
       onPause: _syncOnPause,
       onDetach: _syncOnPause,
     );
+    // 启动后延迟执行自动检查（更新版本 / 云端数据版本），
+    // 等首帧渲染完、家庭档案就绪后再触发，避免启动时阻塞或弹窗过早。
+    WidgetsBinding.instance.addPostFrameCallback((_) => _startupChecks());
+  }
+
+  /// 启动自动检查：应用更新 + WebDAV 云端数据版本（均尊重各自开关）。
+  Future<void> _startupChecks() async {
+    final familyProfile = ref.read(familyProfileProvider);
+    if (familyProfile == null) return; // 首次安装未完成引导，跳过检查
+
+    if (!mounted) return;
+    final storage = ref.read(storageProvider);
+    await UpdateService.checkOnStartup(context, storage);
+    if (!mounted) return;
+    await DataSyncChecker.checkOnStartup(context, storage);
   }
 
   void _syncOnResume() {
