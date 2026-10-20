@@ -184,6 +184,24 @@ class _QrSyncViewState extends ConsumerState<QrSyncView> {
                 '数据快照大小：${qrData.length} 字符',
                 style: TextStyle(fontSize: 12.sp, color: Colors.grey),
               ),
+              if (qrData.length > 2000) ...[
+                SizedBox(height: 8.h),
+                Container(
+                  padding: EdgeInsets.all(12.w),
+                  decoration: BoxDecoration(
+                    color: Colors.orange.withValues(alpha: 0.1),
+                    borderRadius: BorderRadius.circular(8.r),
+                  ),
+                  child: Text(
+                    '数据包含图片，二维码较大，可能无法被某些设备扫描。\n建议改用「本地文件」或 WebDAV 备份以完整保留图片。',
+                    style: TextStyle(
+                      fontSize: 12.sp,
+                      color: Colors.orange.shade800,
+                    ),
+                    textAlign: TextAlign.center,
+                  ),
+                ),
+              ],
               SizedBox(height: 32.h),
               OutlinedButton.icon(
                 icon: const Icon(Icons.file_upload_outlined),
