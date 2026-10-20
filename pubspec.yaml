@@ -30,8 +30,8 @@ dependencies:
   just_audio: ^0.9.36
   # just_audio 音频会话配置 (Android 播放音频必需)
   audio_session: ^0.1.18
-  # 云端同步 (Phase 5 预留)
-  webdav_client: ^1.2.2
+  # WebDAV 上传下载 (http 包实现，替代 webdav_client 的有 bug 实现)
+  http: ^1.2.0
   # 二维码本地同步 (生成 + 扫描)
   qr_flutter: ^4.1.0
   mobile_scanner: ^5.2.3

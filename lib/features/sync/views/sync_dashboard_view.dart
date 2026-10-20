@@ -3,6 +3,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_screenutil/flutter_screenutil.dart';
 
 import '../../../core/utils/local_backup.dart';
+import '../../../data/repositories/local_storage_repo.dart';
 import '../../../data/repositories/sync_repo.dart';
 import '../../../domain/providers/family_provider.dart';
 import '../../../domain/providers/task_provider.dart';
@@ -25,6 +26,9 @@ class _SyncDashboardViewState extends ConsumerState<SyncDashboardView> {
   );
   final _userController = TextEditingController();
   final _pwdController = TextEditingController();
+  final _dirController = TextEditingController(
+    text: LocalStorageRepo.defaultWebDavDir,
+  );
 
   bool _isLoading = false;
 
@@ -33,10 +37,11 @@ class _SyncDashboardViewState extends ConsumerState<SyncDashboardView> {
     super.initState();
     // 回填已保存的 WebDAV 配置（启动时数据版本检查依赖此持久化配置）。
     final storage = ref.read(storageProvider);
-    final (url, user, pwd) = storage.getWebDavConfig();
+    final (url, user, pwd, dir) = storage.getWebDavConfig();
     if (url.isNotEmpty) _urlController.text = url;
     if (user.isNotEmpty) _userController.text = user;
     if (pwd.isNotEmpty) _pwdController.text = pwd;
+    if (dir.isNotEmpty) _dirController.text = dir;
   }
 
   /// 导出全量数据快照到本地 JSON 文件。
@@ -84,11 +89,15 @@ class _SyncDashboardViewState extends ConsumerState<SyncDashboardView> {
     setState(() => _isLoading = true);
     try {
       final syncRepo = SyncRepo(ref.read(storageProvider));
+      final dir = _dirController.text.trim().isEmpty
+          ? LocalStorageRepo.defaultWebDavDir
+          : _dirController.text.trim();
       if (isBackup) {
         await syncRepo.backupToWebDav(
           url: _urlController.text,
           username: _userController.text,
           password: _pwdController.text,
+          directory: dir,
         );
         // 持久化 WebDAV 配置：供启动时数据版本自动检查使用。
         await ref
@@ -97,6 +106,7 @@ class _SyncDashboardViewState extends ConsumerState<SyncDashboardView> {
               url: _urlController.text,
               username: _userController.text,
               password: _pwdController.text,
+              directory: dir,
             );
         ScaffoldMessenger.of(
           context,
@@ -106,7 +116,17 @@ class _SyncDashboardViewState extends ConsumerState<SyncDashboardView> {
           url: _urlController.text,
           username: _userController.text,
           password: _pwdController.text,
+          directory: dir,
         );
+        // 持久化 WebDAV 配置（恢复时也保存，保证后续启动检查路径一致）。
+        await ref
+            .read(storageProvider)
+            .saveWebDavConfig(
+              url: _urlController.text,
+              username: _userController.text,
+              password: _pwdController.text,
+              directory: dir,
+            );
         // 刷新所有 Provider 状态
         ref.invalidate(familyProfileProvider);
         ref.invalidate(taskProvider);
@@ -244,6 +264,18 @@ class _SyncDashboardViewState extends ConsumerState<SyncDashboardView> {
                         obscureText: true,
                         decoration: InputDecoration(
                           labelText: '授权密码',
+                          border: OutlineInputBorder(
+                            borderRadius: BorderRadius.circular(8.r),
+                          ),
+                        ),
+                      ),
+                      SizedBox(height: 16.h),
+                      TextField(
+                        controller: _dirController,
+                        decoration: InputDecoration(
+                          labelText: '存储目录',
+                          hintText: '默认 /HeroAdventure',
+                          helperText: '云端存储数据的文件夹路径',
                           border: OutlineInputBorder(
                             borderRadius: BorderRadius.circular(8.r),
                           ),

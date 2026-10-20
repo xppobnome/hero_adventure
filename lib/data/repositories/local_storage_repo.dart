@@ -132,6 +132,8 @@ class LocalStorageRepo {
   static const String keyWebDavUrl = 'webdav_url'; // WebDAV 地址
   static const String keyWebDavUser = 'webdav_user'; // WebDAV 账号
   static const String keyWebDavPwd = 'webdav_pwd'; // WebDAV 密码
+  static const String keyWebDavDir =
+      'webdav_dir'; // WebDAV 存储目录（默认 /HeroAdventure）
   static const String keyDataSyncAutoCheck =
       'datasync_auto_check'; // 启动时检查云端数据版本开关
   static const String keyLastSyncedUploadAt =
@@ -157,24 +159,33 @@ class LocalStorageRepo {
 
   String getWebDavUrl() => _box.get(keyWebDavUrl) as String? ?? '';
 
+  /// 默认存储目录。
+  static const String defaultWebDavDir = '/HeroAdventure';
+
   Future<void> saveWebDavConfig({
     required String url,
     required String username,
     required String password,
+    String? directory,
   }) async {
     await _box.put(keyWebDavUrl, url);
     await _box.put(keyWebDavUser, username);
     await _box.put(keyWebDavPwd, password);
+    if (directory != null) {
+      await _box.put(keyWebDavDir, directory);
+    }
   }
 
   /// 是否已绑定 WebDAV（配置过有效地址即视为已绑定）。
   bool hasWebDavConfig() => getWebDavUrl().trim().isNotEmpty;
 
-  (String, String, String) getWebDavConfig() {
+  /// 读取 WebDAV 配置：(url, username, password, directory)。
+  (String, String, String, String) getWebDavConfig() {
     return (
       _box.get(keyWebDavUrl) as String? ?? '',
       _box.get(keyWebDavUser) as String? ?? '',
       _box.get(keyWebDavPwd) as String? ?? '',
+      _box.get(keyWebDavDir) as String? ?? defaultWebDavDir,
     );
   }
 

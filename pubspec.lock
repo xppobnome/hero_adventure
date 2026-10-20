@@ -193,22 +193,6 @@ packages:
       url: "https://pub.flutter-io.cn"
     source: hosted
     version: "0.7.15"
-  dio:
-    dependency: transitive
-    description:
-      name: dio
-      sha256: "852ec3b48cc431ac04fff978413c541502b67ffc3e26921e74e3d994694192c1"
-      url: "https://pub.flutter-io.cn"
-    source: hosted
-    version: "5.11.1"
-  dio_web_adapter:
-    dependency: transitive
-    description:
-      name: dio_web_adapter
-      sha256: "3a1b2cd7be71086f38504956e3ebcd2837288d231ff454bafa78021244102bfc"
-      url: "https://pub.flutter-io.cn"
-    source: hosted
-    version: "2.2.2"
   fake_async:
     dependency: transitive
     description:
@@ -382,7 +366,7 @@ packages:
     source: hosted
     version: "2.0.2"
   http:
-    dependency: transitive
+    dependency: "direct main"
     description:
       name: http
       sha256: "87721a4a50b19c7f1d49001e51409bddc46303966ce89a65af4f4e6004896412"
@@ -1058,14 +1042,6 @@ packages:
       url: "https://pub.flutter-io.cn"
     source: hosted
     version: "3.0.3"
-  webdav_client:
-    dependency: "direct main"
-    description:
-      name: webdav_client
-      sha256: "682fffc50b61dc0e8f46717171db03bf9caaa17347be41c0c91e297553bf86b2"
-      url: "https://pub.flutter-io.cn"
-    source: hosted
-    version: "1.2.2"
   win32:
     dependency: transitive
     description:

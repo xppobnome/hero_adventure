@@ -83,13 +83,14 @@ class DataSyncChecker {
 
   /// 返回云端较新的信息；云端不比本机新（或无时间戳）时返回 null。
   static Future<RemoteNewer?> _findNewerRemote(LocalStorageRepo storage) async {
-    final (url, user, pwd) = storage.getWebDavConfig();
+    final (url, user, pwd, dir) = storage.getWebDavConfig();
     final syncRepo = SyncRepo(storage);
 
     final remoteUploadAt = await syncRepo.fetchRemoteUploadAt(
       url: url,
       username: user,
       password: pwd,
+      directory: dir,
     );
     if (remoteUploadAt == null) return null; // 云端无版本信息
 
@@ -185,12 +186,13 @@ class DataSyncChecker {
   ) async {
     final messenger = ScaffoldMessenger.of(ctx);
     try {
-      final (url, user, pwd) = storage.getWebDavConfig();
+      final (url, user, pwd, dir) = storage.getWebDavConfig();
       final syncRepo = SyncRepo(storage);
       final snapshot = await syncRepo.fetchRemoteSnapshot(
         url: url,
         username: user,
         password: pwd,
+        directory: dir,
       );
       await storage.restoreSnapshot(snapshot);
       await storage.setLastSyncedUploadAt(uploadAt);

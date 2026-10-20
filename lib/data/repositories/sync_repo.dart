@@ -1,18 +1,53 @@
 import 'dart:convert';
-import 'package:webdav_client/webdav_client.dart' as webdav;
+
+import 'package:http/http.dart' as http;
+
 import 'local_storage_repo.dart';
 
+/// WebDAV 云端同步仓库。
+///
+/// 直接用 [http] 包实现 WebDAV 的 PUT（上传）/ GET（下载），
+/// 替代 webdav_client 库——该库在上传时用 Dio Stream 且未设置 content-type，
+/// 会触发 Dio 的 `_MultiStream cannot be used to imply a default content-type` 报错。
 class SyncRepo {
   final LocalStorageRepo _localStorage;
 
-  /// WebDAV 上的数据快照文件路径。
-  static const String remoteDataPath = '/hero_data.json';
+  /// 云端数据快照的文件名（拼接在用户配置的目录路径下）。
+  static const String remoteFileName = 'hero_data.json';
 
   SyncRepo(this._localStorage);
 
-  webdav.Client _getWebDavClient(String url, String username, String password) {
-    return webdav.newClient(url, user: username, password: password);
+  /// 拼接完整的远端文件路径：目录路径（如 /HeroAdventure）+ 文件名。
+  static String _remoteFilePath(String dir) {
+    var d = dir.trim();
+    if (d.isEmpty) d = '/';
+    if (!d.startsWith('/')) d = '/$d';
+    if (!d.endsWith('/')) d = '$d/';
+    return '$d$remoteFileName';
   }
+
+  /// 组装带 Basic Auth 的完整 URL。
+  static Uri _buildUri(
+    String url,
+    String dir,
+    String username,
+    String password,
+  ) {
+    var base = url.trim();
+    if (!base.endsWith('/')) base = '$base/';
+    // 去掉末尾多余的斜杠，避免 //。
+    final filePath = _remoteFilePath(dir);
+    final fullPath = '${base.replaceFirst(RegExp(r'/+$'), '')}$filePath';
+
+    final uri = Uri.parse(fullPath);
+    return uri.replace(
+      userInfo: username.isEmpty ? null : '$username:$password',
+    );
+  }
+
+  Map<String, String> _headers() => {
+    'Content-Type': 'application/json; charset=utf-8',
+  };
 
   // 备份全量数据到 WebDAV。
   // 快照中写入 uploadedAt 字段（上传日期时间），供启动时判断云端数据是否为最新版。
@@ -20,9 +55,8 @@ class SyncRepo {
     required String url,
     required String username,
     required String password,
+    required String directory,
   }) async {
-    final client = _getWebDavClient(url, username, password);
-
     final snapshot = _localStorage.buildSnapshot();
     // 记录本次上传的日期时间，作为数据版本判断依据。
     final uploadedAt = DateTime.now().toIso8601String();
@@ -31,11 +65,17 @@ class SyncRepo {
     final jsonString = jsonEncode(snapshot);
     final bytesData = utf8.encode(jsonString);
 
-    await client.write(remoteDataPath, bytesData);
+    final uri = _buildUri(url, directory, username, password);
+    final resp = await http
+        .put(uri, headers: _headers(), body: bytesData)
+        .timeout(const Duration(seconds: 30));
 
-    // 上传成功后，本机记录最近一次同步的云端时间戳，
-    // 之后启动检查时以此判断云端是否出现了更新的数据。
-    await _localStorage.setLastSyncedUploadAt(uploadedAt);
+    if (resp.statusCode >= 200 && resp.statusCode < 300) {
+      // 上传成功后，本机记录最近一次同步的云端时间戳。
+      await _localStorage.setLastSyncedUploadAt(uploadedAt);
+      return;
+    }
+    throw Exception('WebDAV 上传失败：HTTP ${resp.statusCode} ${resp.body}');
   }
 
   // 从 WebDAV 恢复全量数据
@@ -43,11 +83,13 @@ class SyncRepo {
     required String url,
     required String username,
     required String password,
+    required String directory,
   }) async {
     final snapshot = await fetchRemoteSnapshot(
       url: url,
       username: username,
       password: password,
+      directory: directory,
     );
 
     await _localStorage.restoreSnapshot(snapshot);
@@ -60,18 +102,19 @@ class SyncRepo {
   }
 
   /// 拉取云端快照（不写入本地）。
-  ///
-  /// 返回快照 Map；其中 'uploadedAt' 字段为云端数据的上传日期时间。
   Future<Map<String, dynamic>> fetchRemoteSnapshot({
     required String url,
     required String username,
     required String password,
+    required String directory,
   }) async {
-    final client = _getWebDavClient(url, username, password);
+    final uri = _buildUri(url, directory, username, password);
+    final resp = await http.get(uri).timeout(const Duration(seconds: 30));
 
-    final responseBytes = await client.read(remoteDataPath);
-    final jsonString = utf8.decode(responseBytes);
-    return jsonDecode(jsonString) as Map<String, dynamic>;
+    if (resp.statusCode != 200) {
+      throw Exception('WebDAV 读取失败：HTTP ${resp.statusCode} ${resp.body}');
+    }
+    return jsonDecode(utf8.decode(resp.bodyBytes)) as Map<String, dynamic>;
   }
 
   /// 读取云端数据版本（上传日期时间）。
@@ -81,11 +124,13 @@ class SyncRepo {
     required String url,
     required String username,
     required String password,
+    required String directory,
   }) async {
     final snapshot = await fetchRemoteSnapshot(
       url: url,
       username: username,
       password: password,
+      directory: directory,
     );
     return snapshot['uploadedAt'] as String?;
   }
