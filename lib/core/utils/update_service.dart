@@ -18,7 +18,7 @@ class UpdateService {
   UpdateService._();
 
   /// GitHub 仓库（owner/repo）。发布 Release 前改成实际值。
-  static const String githubRepo = 'YOUR_GITHUB_USERNAME/hero_adventure';
+  static const String githubRepo = 'xppobnome/hero_adventure';
 
   /// GitHub Releases API（获取最新 Release）。
   static const String _apiUrl =
@@ -67,7 +67,7 @@ class UpdateService {
     LocalStorageRepo storage,
   ) async {
     final messenger = ScaffoldMessenger.of(context);
-    final loading = showDialog(
+    showDialog(
       context: context,
       barrierDismissible: false,
       builder: (_) => const Center(child: CircularProgressIndicator()),
@@ -80,7 +80,10 @@ class UpdateService {
     } catch (e) {
       error = e;
     }
-    if (loading.mounted) Navigator.of(context, rootNavigator: true).pop();
+    // 关闭 loading 弹窗（它是当前唯一打开的 dialog）。
+    if (context.mounted) {
+      Navigator.of(context, rootNavigator: true).pop();
+    }
 
     if (!context.mounted) return;
     if (error != null) {

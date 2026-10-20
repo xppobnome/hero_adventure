@@ -17,6 +17,7 @@ import '../widgets/level_map.dart';
 import 'hero_gallery_view.dart';
 import 'reward_shop_view.dart';
 import 'math_quiz_view.dart';
+import 'child_settings_view.dart';
 
 /// 儿童端主界面。
 ///

@@ -49,7 +49,7 @@ class DataSyncChecker {
       return;
     }
 
-    final loading = showDialog(
+    showDialog(
       context: context,
       barrierDismissible: false,
       builder: (_) => const Center(child: CircularProgressIndicator()),
@@ -62,7 +62,10 @@ class DataSyncChecker {
     } catch (e) {
       error = e;
     }
-    if (loading.mounted) Navigator.of(context, rootNavigator: true).pop();
+    // 关闭 loading 弹窗（它是当前唯一打开的 dialog）。
+    if (context.mounted) {
+      Navigator.of(context, rootNavigator: true).pop();
+    }
 
     if (!context.mounted) return;
     if (error != null) {
