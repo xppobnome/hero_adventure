@@ -85,4 +85,43 @@ class ImageCompressor {
 
   /// 从 base64 解码出字节（供测试或特殊场景使用）。
   static Uint8List decode(String base64) => base64Decode(base64);
+
+  /// 把 image_picker 返回的临时/cache 文件复制到应用文档目录的持久路径。
+  ///
+  /// image_picker 返回的路径通常位于系统 cache 目录，重启或系统清理后会失效，
+  /// 导致后续 buildSnapshot 读不到文件、图片无法随快照同步。因此在选中图片时
+  /// 就复制一份到文档目录，返回持久化后的绝对路径。
+  ///
+  /// 返回新路径；失败时回退返回原路径（不阻断选图流程）。
+  static Future<String> persistPickedImage(String sourcePath) async {
+    if (sourcePath.isEmpty) return sourcePath;
+    try {
+      final src = File(sourcePath);
+      if (!await src.exists()) return sourcePath;
+
+      final dir = await getApplicationDocumentsDirectory();
+      final imageDir = Directory('${dir.path}/backup_images');
+      if (!await imageDir.exists()) {
+        await imageDir.create(recursive: true);
+      }
+
+      final ext = _extOf(sourcePath);
+      final name =
+          'pick_${DateTime.now().millisecondsSinceEpoch}$ext';
+      final dest = File('${imageDir.path}/$name');
+      await src.copy(dest.path);
+      return dest.path;
+    } catch (_) {
+      return sourcePath; // 复制失败则退回原路径，不影响主流程
+    }
+  }
+
+  /// 推断文件扩展名（默认 .jpg）。
+  static String _extOf(String path) {
+    final lower = path.toLowerCase();
+    if (lower.endsWith('.png')) return '.png';
+    if (lower.endsWith('.webp')) return '.webp';
+    if (lower.endsWith('.gif')) return '.gif';
+    return '.jpg';
+  }
 }

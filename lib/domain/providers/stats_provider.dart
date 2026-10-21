@@ -1,7 +1,7 @@
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../data/models/check_in_record.dart';
 import '../../data/models/child_profile.dart';
-import '../hero_system.dart' show levelFromExp, levelProgress;
+import '../hero_system.dart' show levelFromExp, levelProgress, expToNextLevel;
 import 'check_in_provider.dart';
 import 'family_provider.dart';
 
@@ -13,6 +13,7 @@ class ChildStats {
   final int coins; // 能量币
   final int exp; // 经验值
   final double levelProgress; // 等级进度 0~1
+  final int expToNext; // 距离升级还差多少 EXP（满级为 0）
 
   const ChildStats({
     required this.totalCheckIns,
@@ -21,6 +22,7 @@ class ChildStats {
     required this.coins,
     required this.exp,
     required this.levelProgress,
+    required this.expToNext,
   });
 }
 
@@ -51,6 +53,7 @@ final childStatsProvider = Provider.family<ChildStats, String>((ref, childId) {
     coins: child.coins,
     exp: child.exp,
     levelProgress: levelProgress(child.exp),
+    expToNext: expToNextLevel(child.exp),
   );
 });
 

@@ -27,6 +27,11 @@ class _HeroGalleryViewState extends ConsumerState<HeroGalleryView> {
   /// 是否正在展示英雄出战弹窗 (防止连点重复弹窗)。
   bool _showingHeroDialog = false;
 
+  /// 弹窗是否仍处于打开状态。用于区分「音效自然结束关闭」与
+  /// 「用户手动点弹窗外部提前关闭」，避免手动关闭后 _playAndClose
+  /// 又去 pop 一次 (误弹图鉴页)。
+  bool _dialogOpen = false;
+
   Future<void> _onSelectHero(HeroEntry hero) async {
     if (_showingHeroDialog) return;
     _showingHeroDialog = true;
@@ -48,6 +53,20 @@ class _HeroGalleryViewState extends ConsumerState<HeroGalleryView> {
     unawaited(_playAndClose(hero));
   }
 
+  /// 未解锁英雄：点击后同样弹出展示弹窗 + 音效 + 特效，但文字为「未解锁」。
+  Future<void> _onTapLockedHero(HeroEntry hero) async {
+    if (_showingHeroDialog) return;
+    _showingHeroDialog = true;
+
+    if (!mounted) {
+      _showingHeroDialog = false;
+      return;
+    }
+
+    _showHeroDialog(hero, badgeText: '未解锁');
+    unawaited(_playAndClose(hero));
+  }
+
   Future<void> _playAndClose(HeroEntry hero) async {
     try {
       await AudioManager().playSkill(hero);
@@ -56,20 +75,26 @@ class _HeroGalleryViewState extends ConsumerState<HeroGalleryView> {
     }
     if (!mounted) return;
     _showingHeroDialog = false;
-    if (Navigator.of(context).canPop()) {
-      Navigator.of(context).pop(); // 声音结束，同步关闭弹窗
+    // 只有当弹窗仍然打开 (音效自然结束时) 才关闭它。
+    // 若用户已手动点外部提前关闭 (barrierDismissible)，_dialogOpen 已被置 false，
+    // 此时不再 pop，避免误弹掉图鉴页。
+    if (!_dialogOpen) return;
+    final nav = Navigator.of(context, rootNavigator: true);
+    if (nav.canPop()) {
+      nav.pop();
     }
   }
 
-  void _showHeroDialog(HeroEntry hero) {
-    showGeneralDialog(
+  void _showHeroDialog(HeroEntry hero, {String badgeText = '已出战！'}) {
+    _dialogOpen = true;
+    showGeneralDialog<void>(
       context: context,
       barrierDismissible: true,
       barrierLabel: '英雄展示',
       barrierColor: Colors.black.withValues(alpha: 0.55),
       transitionDuration: const Duration(milliseconds: 260),
       pageBuilder: (context, animation, secondaryAnimation) {
-        return HeroShowcaseDialog(hero: hero);
+        return HeroShowcaseDialog(hero: hero, badgeText: badgeText);
       },
       transitionBuilder: (context, animation, secondaryAnimation, child) {
         // 弹性缩放 + 淡入过渡
@@ -83,8 +108,11 @@ class _HeroGalleryViewState extends ConsumerState<HeroGalleryView> {
         );
       },
     ).then((_) {
-      // 弹窗关闭 (含手动点遮罩) 时重置状态
+      // 弹窗关闭 (含手动点遮罩) 时：置标志位 + 停音效，保证声音同步停止。
+      _dialogOpen = false;
       _showingHeroDialog = false;
+      // 手动点外部关闭时立即停止正在播放的技能音效。
+      AudioManager().stop();
     });
   }
 
@@ -130,7 +158,9 @@ class _HeroGalleryViewState extends ConsumerState<HeroGalleryView> {
                     unlocked: unlocked,
                     diffLevel: diffLevel,
                     isCurrent: isCurrent,
-                    onSelect: unlocked ? () => _onSelectHero(hero) : null,
+                    onSelect: unlocked
+                        ? () => _onSelectHero(hero)
+                        : () => _onTapLockedHero(hero),
                   );
                 },
               ),

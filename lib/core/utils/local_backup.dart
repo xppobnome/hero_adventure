@@ -1,14 +1,14 @@
-import 'dart:convert';
 import 'dart:io';
 import 'dart:typed_data';
 
 import 'package:file_picker/file_picker.dart';
 
 import '../../data/repositories/local_storage_repo.dart';
+import 'backup_pack.dart';
 
 /// 本地文件备份工具。
 ///
-/// 把全量数据快照导出为本地 JSON 文件，或从本地 JSON 文件导入恢复。
+/// 把全量数据 + 图片打包为 `.herobackup` 压缩文件导出，或从该文件导入恢复。
 /// 「数据时空穿梭机」与「二维码同步」两个界面共用此实现，避免重复逻辑。
 class LocalBackup {
   const LocalBackup._();
@@ -18,21 +18,22 @@ class LocalBackup {
     final now = DateTime.now();
     String two(int v) => v.toString().padLeft(2, '0');
     return 'hero_backup_${now.year}${two(now.month)}${two(now.day)}_'
-        '${two(now.hour)}${two(now.minute)}${two(now.second)}.json';
+        '${two(now.hour)}${two(now.minute)}${two(now.second)}'
+        '.${BackupPack.extension}';
   }
 
-  /// 导出全量数据快照到本地 JSON 文件。
+  /// 导出全量数据 + 图片到本地 `.herobackup` 压缩文件。
   ///
   /// 返回保存路径；用户取消时返回 null。
   static Future<String?> exportToFile(LocalStorageRepo storage) async {
-    final jsonString = jsonEncode(await storage.buildSnapshot());
-    final bytes = Uint8List.fromList(utf8.encode(jsonString));
+    final snapshot = await storage.buildSnapshot();
+    final bytes = await BackupPack.pack(snapshot);
 
     final path = await FilePicker.platform.saveFile(
       dialogTitle: '导出数据备份',
       fileName: _backupFileName(),
       type: FileType.custom,
-      allowedExtensions: const ['json'],
+      allowedExtensions: const [BackupPack.extension],
       bytes: bytes,
     );
 
@@ -48,14 +49,14 @@ class LocalBackup {
     return path;
   }
 
-  /// 从本地 JSON 文件导入并恢复全量数据。
+  /// 从本地 `.herobackup` 压缩文件导入并恢复全量数据。
   ///
   /// 返回 true 表示导入成功；用户取消时返回 false。
   static Future<bool> importFromFile(LocalStorageRepo storage) async {
     final result = await FilePicker.platform.pickFiles(
       dialogTitle: '选择备份文件',
       type: FileType.custom,
-      allowedExtensions: const ['json'],
+      allowedExtensions: const [BackupPack.extension],
       allowMultiple: false,
       withData: true,
     );
@@ -63,16 +64,16 @@ class LocalBackup {
     if (result == null || result.files.isEmpty) return false;
 
     final picked = result.files.single;
-    final String content;
+    final Uint8List bytes;
     if (picked.bytes != null) {
-      content = utf8.decode(picked.bytes!);
+      bytes = picked.bytes!;
     } else if (picked.path != null) {
-      content = await File(picked.path!).readAsString();
+      bytes = await File(picked.path!).readAsBytes();
     } else {
       throw Exception('无法读取所选文件内容');
     }
 
-    final snapshot = jsonDecode(content) as Map<String, dynamic>;
+    final snapshot = await BackupPack.unpack(bytes);
     await storage.restoreSnapshot(snapshot);
     return true;
   }

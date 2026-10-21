@@ -44,8 +44,17 @@ app.*.map.json
 /android/app/profile
 /android/app/release
 
+# 签名相关敏感文件（勿提交到 git / gitee / github）
+android/key.properties
+android/app/*.jks
+*.jks
+*.keystore
+
 # Widget Preview related
 .widget_preview/
+
+# 临时生成的图片（AI 生成图标候选等）
+generated-images/
 
 # WorkBuddy workspace data
 .workbuddy/

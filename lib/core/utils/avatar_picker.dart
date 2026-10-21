@@ -1,6 +1,8 @@
 import 'package:flutter/material.dart';
 import 'package:image_picker/image_picker.dart';
 
+import 'image_compressor.dart';
+
 /// 弹出头像选择来源 (拍照 / 相册)，返回选中的本地文件路径，取消返回 null。
 Future<String?> pickAvatarImage(BuildContext context) async {
   final source = await showModalBottomSheet<ImageSource>(
@@ -33,5 +35,7 @@ Future<String?> pickAvatarImage(BuildContext context) async {
     maxWidth: 800,
     maxHeight: 800,
   );
-  return picked?.path;
+  if (picked == null) return null;
+  // 复制到持久目录，避免 cache 临时文件被清理后头像/备份读不到。
+  return ImageCompressor.persistPickedImage(picked.path);
 }

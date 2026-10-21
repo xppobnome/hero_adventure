@@ -1,10 +1,13 @@
+import 'dart:convert';
 import 'dart:io';
+import 'dart:typed_data';
 
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_screenutil/flutter_screenutil.dart';
-import 'package:path_provider/path_provider.dart';
+import 'package:file_picker/file_picker.dart';
 
+import '../../../core/utils/native_tools.dart';
 import '../../../core/widgets/child_avatar.dart';
 import '../../../data/models/check_in_record.dart';
 import '../../../domain/providers/check_in_provider.dart';
@@ -160,13 +163,44 @@ class _CheckInRecordsViewState extends ConsumerState<CheckInRecordsView> {
             '$time');
       }
 
-      final dir = await getApplicationDocumentsDirectory();
-      final file = File('${dir.path}/打卡记录_${DateTime.now().millisecondsSinceEpoch}.csv');
-      await file.writeAsString(sb.toString());
+      // 生成 CSV 字节（含 BOM，让 Excel 正确识别 UTF-8）。
+      final bytes = Uint8List.fromList(utf8.encode(sb.toString()));
+
+      // 通过系统保存对话框导出到公共目录（默认可选下载目录），
+      // 用户选择保存位置后，直接用系统应用选择器打开该文件。
+      final now = DateTime.now();
+      String two(int v) => v.toString().padLeft(2, '0');
+      final fileName =
+          '打卡记录_${now.year}${two(now.month)}${two(now.day)}_${two(now.hour)}${two(now.minute)}${two(now.second)}.csv';
+
+      final path = await FilePicker.platform.saveFile(
+        dialogTitle: '导出打卡记录',
+        fileName: fileName,
+        type: FileType.custom,
+        allowedExtensions: const ['csv'],
+        bytes: bytes,
+      );
+
+      if (path == null) {
+        if (mounted) setState(() => _exporting = false);
+        return; // 用户取消
+      }
+
+      // Android 的 saveFile 已通过 bytes 写入；非 Android 需自行写文件。
+      if (!Platform.isAndroid) {
+        await File(path).writeAsBytes(bytes);
+      }
 
       if (!mounted) return;
+
+      // 弹出系统「选择打开方式」，让用户直接打开刚导出的记录。
+      final opened = await NativeTools.openFile(path);
+      if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('已导出到: ${file.path}')),
+        SnackBar(
+          content: Text(opened ? '已导出并打开：$path' : '已导出到：$path'),
+          backgroundColor: Colors.green,
+        ),
       );
     } catch (e) {
       if (!mounted) return;

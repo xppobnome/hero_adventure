@@ -4,6 +4,8 @@ import 'dart:math' as math;
 ///
 /// 生成加减法题目，支持 10 以内 / 20 以内的加法、减法、加减混合，
 /// 供儿童端每日学习任务使用。
+///
+/// 「加减混合」(mix) 采用三数连算（如 2+1-3），其余为两数运算。
 
 /// 一道数学题。
 class MathQuestion {
@@ -12,18 +14,32 @@ class MathQuestion {
   final String op; // '+' 或 '-'
   final int answer; // 正确答案
 
+  // 三数连算（仅 mix 时使用）：第三个操作数 + 第二个运算符。
+  final int? c;
+  final String? op2;
+
   const MathQuestion({
     required this.a,
     required this.b,
     required this.op,
     required this.answer,
+    this.c,
+    this.op2,
   });
 
-  /// 题目文本，如 "3 + 5 = ?"。
-  String get text => '$a $op $b = ?';
+  /// 题目文本，如 "3 + 5 = ?" 或 "2 + 1 - 3 = ?"。
+  String get text {
+    if (c != null && op2 != null) {
+      return '$a $op $b $op2 $c = ?';
+    }
+    return '$a $op $b = ?';
+  }
 
   /// 运算符号的中文说明。
-  String get opLabel => op == '+' ? '加' : '减';
+  String get opLabel {
+    if (c != null && op2 != null) return '加减混合';
+    return op == '+' ? '加' : '减';
+  }
 }
 
 /// 数学题生成器。
@@ -80,6 +96,10 @@ class MathQuizGenerator {
 
   /// 去重键：加法按无序对 (小在前大在后) 去重，减法按有序对。
   String _dedupKey(MathQuestion q) {
+    if (q.c != null && q.op2 != null) {
+      // 三数连算：按完整表达式去重。
+      return '${q.a}${q.op}${q.b}${q.op2}${q.c}';
+    }
     if (q.op == '+') {
       final lo = q.a < q.b ? q.a : q.b;
       final hi = q.a < q.b ? q.b : q.a;
@@ -94,7 +114,11 @@ class MathQuizGenerator {
     if (useOp == '+') {
       return _generateAdd(max);
     }
-    return _generateSub(max);
+    if (useOp == '-') {
+      return _generateSub(max);
+    }
+    // mix：三数连算 (如 2+1-3)
+    return _generateThree(max);
   }
 
   String _resolveOp() {
@@ -105,7 +129,7 @@ class MathQuizGenerator {
         return '-';
       case 'mix':
       default:
-        return _rng.nextBool() ? '+' : '-';
+        return 'mix';
     }
   }
 
@@ -121,6 +145,56 @@ class MathQuizGenerator {
     final a = _rng.nextInt(max + 1); // 0..max
     final b = _rng.nextInt(a + 1); // 0..a，保证 a >= b >= 0
     return MathQuestion(a: a, b: b, op: '-', answer: a - b);
+  }
+
+  /// 生成三数连算题 (加减混合)：a op1 b op2 c，全程结果与操作数保持非负且 <= max。
+  ///
+  /// 例如 2+1-3=0、5-2+3=6、9-4-2=3 等。op1/op2 随机取 + 或 -，
+  /// 每一步的中间结果都保证非负且不超过 max，避免负数 / 超范围。
+  MathQuestion _generateThree(int max) {
+    for (int attempt = 0; attempt < 50; attempt++) {
+      final op1 = _rng.nextBool() ? '+' : '-';
+      final op2 = _rng.nextBool() ? '+' : '-';
+
+      final a = _rng.nextInt(max + 1);
+      final b = _rng.nextInt(max + 1);
+
+      // 第一步：a op1 b
+      int mid;
+      if (op1 == '+') {
+        mid = a + b;
+        if (mid > max) continue;
+      } else {
+        mid = a - b;
+        if (mid < 0) continue;
+      }
+
+      // 第二步：mid op2 c
+      int c;
+      int answer;
+      if (op2 == '+') {
+        // mid + c <= max
+        final upperC = max - mid;
+        if (upperC < 0) continue;
+        c = _rng.nextInt(upperC + 1);
+        answer = mid + c;
+      } else {
+        // mid - c >= 0
+        c = _rng.nextInt(mid + 1);
+        answer = mid - c;
+      }
+
+      return MathQuestion(
+        a: a,
+        b: b,
+        op: op1,
+        answer: answer,
+        c: c,
+        op2: op2,
+      );
+    }
+    // 兜底：极端情况下回退到简单的两数加法。
+    return _generateAdd(max);
   }
 }
 

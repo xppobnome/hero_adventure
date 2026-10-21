@@ -10,6 +10,7 @@ import 'core/utils/audio_manager.dart';
 import 'core/utils/data_sync_checker.dart';
 import 'core/utils/update_service.dart';
 import 'data/repositories/local_storage_repo.dart';
+import 'data/repositories/sync_repo.dart';
 import 'domain/providers/family_provider.dart';
 import 'domain/providers/theme_provider.dart';
 import 'domain/providers/task_provider.dart';
@@ -21,6 +22,7 @@ import 'features/auth/views/family_setup_view.dart';
 import 'features/auth/views/role_selection_view.dart';
 import 'features/child_adventure/views/child_adventure_view.dart'; // 引入儿童端
 import 'features/parent_console/views/parent_console_view.dart'; // 引入家长端
+import 'features/splash/splash_screen.dart';
 
 // 允许忽略所有自签名 SSL 证书的全局类
 class MyHttpOverrides extends HttpOverrides {
@@ -67,23 +69,62 @@ void main() async {
   runApp(
     ProviderScope(
       overrides: [storageProvider.overrideWithValue(storageRepo)],
-      child: const HeroAdventureApp(),
+      child: HeroAdventureApp(designSize: _resolveDesignSize(storageRepo)),
     ),
   );
 }
 
+/// 根据设备物理尺寸 + 用户「界面样式」设置解析适配基准。
+///
+/// - 手机 / 窄屏（短边 < 600dp）：使用 375x812 设计稿（缩放 ≈1）。
+/// - 平板 / 宽屏：使用 iPad 竖屏基准 768x1024，使 screenutil 缩放不再按
+///   宽度放大 3 倍以上；平板竖屏时缩放 ≈1，横屏时约 1.6 倍（可接受）。
+///
+/// 说明：designSize 用固定基准而非物理尺寸，避免屏幕旋转时基准剧烈变化
+/// （横屏 1280 ↔ 竖屏 800）导致缩放忽大忽小。
+Size _resolveDesignSize(LocalStorageRepo storage) {
+  // 用户显式选择优先。
+  final mode = storage.getUiMode();
+  final physical = _physicalLogicalSize();
+
+  if (mode == 'phone') return const Size(375, 812);
+  if (mode == 'tablet') return const Size(768, 1024);
+
+  // 'auto'：按物理尺寸判断。
+  if (physical != null && physical.shortSide >= 600) {
+    return const Size(768, 1024);
+  }
+  return const Size(375, 812);
+}
+
+/// 读取物理逻辑尺寸（宽、高、短边）；拿不到时返回 null。
+({double width, double height, double shortSide})? _physicalLogicalSize() {
+  final views = WidgetsBinding.instance.platformDispatcher.views;
+  if (views.isEmpty) return null;
+  final view = views.first;
+  final physical = view.physicalSize;
+  final ratio = view.devicePixelRatio;
+  final w = physical.width / ratio;
+  final h = physical.height / ratio;
+  return (width: w, height: h, shortSide: w < h ? w : h);
+}
+
 class HeroAdventureApp extends StatelessWidget {
-  const HeroAdventureApp({super.key});
+  const HeroAdventureApp({super.key, required this.designSize});
+
+  /// 屏幕适配设计基准：手机 375x812，平板/宽屏用更大的基准，避免
+  /// screenutil 按宽度比例把 .w/.sp/.h 放大 3 倍以上导致内容溢出。
+  final Size designSize;
 
   @override
   Widget build(BuildContext context) {
     return ScreenUtilInit(
-      designSize: const Size(375, 812),
+      designSize: designSize,
       minTextAdapt: true,
       splitScreenMode: true,
       builder: (context, child) {
         return MaterialApp(
-          title: 'Hero Adventure Plan',
+          title: '儿童英雄闯关冒险',
           // 使用奥特曼主题统一配色
           theme: UltramanTheme.buildTheme(),
           // 【解决全部底层英文问题】：强制配置中文本地化 (如 Stepper, Dialog 等默认组件)
@@ -93,10 +134,37 @@ class HeroAdventureApp extends StatelessWidget {
             GlobalCupertinoLocalizations.delegate,
           ],
           supportedLocales: const [Locale('zh', 'CN')],
-          home: const InitialRouteWrapper(),
+          home:  SplashGate(),
         );
       },
     );
+  }
+}
+
+/// 开屏过渡：先展示启动动画，短暂停留后自动切换到主界面。
+class SplashGate extends StatefulWidget {
+  const SplashGate({super.key});
+
+  @override
+  State<SplashGate> createState() => _SplashGateState();
+}
+
+class _SplashGateState extends State<SplashGate> {
+  bool _showSplash = true;
+
+  @override
+  void initState() {
+    super.initState();
+    // 开屏停留约 1.8 秒后进入主界面（与 SplashScreen 动画时长对齐）。
+    Future.delayed(const Duration(milliseconds: 1800), () {
+      if (mounted) setState(() => _showSplash = false);
+    });
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    if (_showSplash) return const SplashScreen();
+    return const InitialRouteWrapper();
   }
 }
 
@@ -106,9 +174,7 @@ class InitialRouteWrapper extends ConsumerStatefulWidget {
   @override
   ConsumerState<InitialRouteWrapper> createState() =>
       _InitialRouteWrapperState();
-}
-
-class _InitialRouteWrapperState extends ConsumerState<InitialRouteWrapper> {
+}class _InitialRouteWrapperState extends ConsumerState<InitialRouteWrapper> {
   late final AppLifecycleListener _lifecycleListener;
 
   @override
@@ -156,6 +222,30 @@ class _InitialRouteWrapperState extends ConsumerState<InitialRouteWrapper> {
     // 这里额外触发一次刷新，保证未写入的待处理状态被安全保存。
     if (!mounted) return;
     ref.invalidate(familyProfileProvider);
+
+    // 「退出前上传数据」开关开启且已绑定 WebDAV 时，退出前把最新数据备份到云端。
+    final storage = ref.read(storageProvider);
+    if (storage.getUploadOnExit() && storage.hasWebDavConfig()) {
+      _uploadBeforeExit(storage);
+    }
+  }
+
+  /// 退出前上传数据到云端（静默执行，失败不打扰用户）。
+  Future<void> _uploadBeforeExit(LocalStorageRepo storage) async {
+    try {
+      final (url, user, pwd, dir) = storage.getWebDavConfig();
+      if (url.isEmpty) return;
+      final syncRepo = SyncRepo(storage);
+      await syncRepo.backupToWebDav(
+        url: url,
+        username: user,
+        password: pwd,
+        directory: dir,
+      );
+      debugPrint('[退出上传] 已备份最新数据到 WebDAV');
+    } catch (e) {
+      debugPrint('[退出上传] 上传失败：$e');
+    }
   }
 
   @override

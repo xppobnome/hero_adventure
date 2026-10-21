@@ -4,8 +4,11 @@ import 'package:flutter_screenutil/flutter_screenutil.dart';
 import '../../../../core/widgets/pin_keypad.dart';
 import '../../../../domain/providers/family_provider.dart';
 import '../../../shared/settings/update_settings_cards.dart';
-import '../../../sync/views/sync_dashboard_view.dart';
-import '../../../sync/views/qr_sync_view.dart';
+import '../../../shared/settings/ui_mode_settings_card.dart';
+import '../../../shared/settings/nav_label_settings_card.dart';
+import '../../../shared/settings/shortcut_settings_card.dart';
+import '../../../shared/settings/about_view.dart';
+import '../../../sync/views/data_sync_entry_view.dart';
 
 class SettingsTab extends ConsumerWidget {
   const SettingsTab({super.key});
@@ -100,6 +103,28 @@ class SettingsTab extends ConsumerWidget {
 
         SizedBox(height: 16.h),
 
+        // ====== 界面样式 ======
+        Text(
+          '界面样式',
+          style: TextStyle(fontSize: 20.sp, fontWeight: FontWeight.bold),
+        ),
+        SizedBox(height: 16.h),
+        const UiModeSettingsCard(),
+        SizedBox(height: 12.h),
+        const NavLabelSettingsCard(),
+
+        SizedBox(height: 16.h),
+
+        // ====== 桌面快捷方式 ======
+        Text(
+          '桌面快捷方式',
+          style: TextStyle(fontSize: 20.sp, fontWeight: FontWeight.bold),
+        ),
+        SizedBox(height: 16.h),
+        const ShortcutSettingsCard(),
+
+        SizedBox(height: 16.h),
+
         // ====== 应用更新与数据版本 ======
         Text(
           '更新与数据版本',
@@ -131,46 +156,17 @@ class SettingsTab extends ConsumerWidget {
                     color: Colors.blue.withOpacity(0.1),
                     shape: BoxShape.circle,
                   ),
-                  child: Icon(Icons.qr_code_2, color: Colors.blue, size: 24.r),
+                  child: Icon(Icons.sync_alt, color: Colors.blue, size: 24.r),
                 ),
                 title: Text(
-                  '面对面传输（局域网）',
+                  '数据同步与恢复',
                   style: TextStyle(
                     fontSize: 16.sp,
                     fontWeight: FontWeight.bold,
                   ),
                 ),
                 subtitle: Text(
-                  '同一 WiFi 下面对面传输数据',
-                  style: TextStyle(fontSize: 14.sp),
-                ),
-                trailing: const Icon(Icons.arrow_forward_ios, size: 16),
-                onTap: () {
-                  Navigator.push(
-                    context,
-                    MaterialPageRoute(builder: (_) => const QrSyncView()),
-                  );
-                },
-              ),
-              const Divider(height: 1),
-              ListTile(
-                leading: Container(
-                  padding: EdgeInsets.all(8.w),
-                  decoration: BoxDecoration(
-                    color: Colors.blue.withOpacity(0.1),
-                    shape: BoxShape.circle,
-                  ),
-                  child: Icon(Icons.cloud_sync, color: Colors.blue, size: 24.r),
-                ),
-                title: Text(
-                  'WebDAV 同步与备份',
-                  style: TextStyle(
-                    fontSize: 16.sp,
-                    fontWeight: FontWeight.bold,
-                  ),
-                ),
-                subtitle: Text(
-                  '连接家庭 NAS 或坚果云防丢失',
+                  '面对面传输 / WebDAV 云端备份与恢复',
                   style: TextStyle(fontSize: 14.sp),
                 ),
                 trailing: const Icon(Icons.arrow_forward_ios, size: 16),
@@ -178,7 +174,7 @@ class SettingsTab extends ConsumerWidget {
                   Navigator.push(
                     context,
                     MaterialPageRoute(
-                      builder: (_) => const SyncDashboardView(),
+                      builder: (_) => const DataSyncEntryView(),
                     ),
                   );
                 },
@@ -229,13 +225,52 @@ class SettingsTab extends ConsumerWidget {
                   ),
                 ),
                 subtitle: Text(
-                  '解除后本机下次打开将回到终端身份选择',
+                  '解除后本机将回到终端身份识别界面',
                   style: TextStyle(fontSize: 14.sp),
                 ),
                 trailing: const Icon(Icons.arrow_forward_ios, size: 16),
                 onTap: () => _showUnbindDialog(context, ref),
               ),
             ],
+          ),
+        ),
+
+        SizedBox(height: 16.h),
+
+        // ====== 关于 ======
+        Text(
+          '关于',
+          style: TextStyle(fontSize: 20.sp, fontWeight: FontWeight.bold),
+        ),
+        SizedBox(height: 16.h),
+        Card(
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(12.r),
+          ),
+          child: ListTile(
+            leading: Container(
+              padding: EdgeInsets.all(8.w),
+              decoration: BoxDecoration(
+                color: Colors.purple.withOpacity(0.1),
+                shape: BoxShape.circle,
+              ),
+              child: Icon(Icons.info_outline, color: Colors.purple, size: 24.r),
+            ),
+            title: Text(
+              '关于本应用',
+              style: TextStyle(fontSize: 16.sp, fontWeight: FontWeight.bold),
+            ),
+            subtitle: Text(
+              '软件信息、版本号与软件介绍',
+              style: TextStyle(fontSize: 14.sp),
+            ),
+            trailing: const Icon(Icons.arrow_forward_ios, size: 16),
+            onTap: () {
+              Navigator.push(
+                context,
+                MaterialPageRoute(builder: (_) => const AboutView()),
+              );
+            },
           ),
         ),
       ],
@@ -252,7 +287,9 @@ class SettingsTab extends ConsumerWidget {
           style: TextStyle(fontSize: 18.sp, fontWeight: FontWeight.bold),
         ),
         content: Text(
-          '解除后，本机下次打开将回到「终端身份识别」界面，需要重新选择身份或输入 PIN。',
+          '解除后，本机将回到「终端身份识别」界面，需要重新选择身份或输入 PIN 才能进入。\n\n'
+          '「确认解除」：解除绑定，但停留在当前界面（下次打开应用时生效）。\n'
+          '「确认解除并返回」：解除绑定并立即返回终端身份识别界面。',
           style: TextStyle(fontSize: 14.sp),
         ),
         actions: [
@@ -260,17 +297,31 @@ class SettingsTab extends ConsumerWidget {
             onPressed: () => Navigator.pop(ctx),
             child: const Text('取消'),
           ),
-          ElevatedButton(
+          TextButton(
             onPressed: () {
-              ref.read(deviceRoleProvider.notifier).state = 'unbound';
+              // 仅解除绑定（写入存储），不改运行时状态，停留在当前界面。
+              // 下次启动时读到 'unbound' 会进入身份识别界面。
               ref.read(storageProvider).saveDeviceRole('unbound');
               Navigator.pop(ctx);
               ScaffoldMessenger.of(
                 context,
-              ).showSnackBar(const SnackBar(content: Text('已解除家长设备绑定')));
+              ).showSnackBar(const SnackBar(content: Text('已解除绑定，下次打开将回到身份识别界面')));
+            },
+            child: const Text('确认解除'),
+          ),
+          ElevatedButton(
+            onPressed: () {
+              // 解除绑定 + 立即返回：同时改运行时状态，根级 InitialRouteWrapper
+              // watch 到 'unbound' 自动重建为终端身份识别界面。
+              ref.read(deviceRoleProvider.notifier).state = 'unbound';
+              ref.read(storageProvider).saveDeviceRole('unbound');
+              Navigator.pop(ctx);
             },
             style: ElevatedButton.styleFrom(backgroundColor: Colors.orange),
-            child: const Text('确认解除', style: TextStyle(color: Colors.white)),
+            child: const Text(
+              '确认解除并返回',
+              style: TextStyle(color: Colors.white),
+            ),
           ),
         ],
       ),

@@ -4,32 +4,47 @@ import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:flutter_screenutil/flutter_screenutil.dart';
 import 'package:package_info_plus/package_info_plus.dart';
-import 'package:url_launcher/url_launcher.dart';
 
 import '../../data/repositories/local_storage_repo.dart';
+import 'url_opener.dart';
 
 /// 应用更新检查服务。
 ///
-/// 数据源：GitHub Releases。在仓库发布一个 Release（tag 形如 v1.1.0，
-/// 描述填写更新公告，附件上传 APK）后，客户端启动时即可检查到更新。
+/// 支持三种更新源（在家长设置「检查更新」里选择）：
+/// - GitHub：仓库 Release（tag 形如 v1.1.0，描述填更新公告，附件传 APK）。
+/// - Gitee：仓库「发行版 Release」，API 结构与 GitHub 一致，适合国内网络。
+/// - 网盘：用户配置一个 JSON 公告直链（version/changelog/downloadUrl），
+///   下载地址可指向任意网盘分享链接 / 直链。
 ///
-/// 【使用前配置】：把 [githubRepo] 改成你的实际仓库，如 'zhangsan/hero_adventure'。
+/// 【使用前配置】：把 [githubRepo] / [giteeRepo] 改成实际仓库 owner/repo。
 class UpdateService {
   UpdateService._();
 
-  /// GitHub 仓库（owner/repo）。发布 Release 前改成实际值。
+  /// GitHub 仓库（owner/repo）。
   static const String githubRepo = 'xppobnome/hero_adventure';
 
-  /// GitHub Releases API（获取最新 Release）。
-  static const String _apiUrl =
-      'https://api.github.com/repos/$githubRepo/releases/latest';
+  /// Gitee 仓库（owner/repo）。对应 https://gitee.com/xppobnome/hero_adventure
+  static const String giteeRepo = 'xppobnome/hero_adventure';
+
+  /// 两种更新源标识（GitHub / Gitee）。
+  static const String sourceGithub = 'github';
+  static const String sourceGitee = 'gitee';
+
+  /// 网盘下载地址（蓝奏云，独立按钮，不做版本比较）。
+  static const String netdiskUrl = 'https://xpp.lanzouc.com/b0lp4bef';
+
+  /// 更新源显示名（供设置界面展示）。
+  static const Map<String, String> sourceLabels = {
+    sourceGithub: 'GitHub',
+    sourceGitee: 'Gitee',
+  };
 
   /// 检查远程最新版本信息。
   ///
   /// 返回 null 表示无更新（远程版本 <= 当前版本）。
   /// 抛异常表示网络/配置问题，由调用方决定如何提示。
-  static Future<UpdateInfo?> checkForUpdate() async {
-    final info = await _fetchLatestRelease();
+  static Future<UpdateInfo?> checkForUpdate(LocalStorageRepo storage) async {
+    final info = await _fetchLatestBySource(storage);
     if (info == null) return null;
 
     final packageInfo = await PackageInfo.fromPlatform();
@@ -50,7 +65,7 @@ class UpdateService {
     if (!storage.getUpdateAutoCheck()) return; // 用户关闭了自动检查
     if (storage.getUpdatePermanentIgnored()) return; // 永久忽略
     try {
-      final info = await checkForUpdate();
+      final info = await checkForUpdate(storage);
       if (info == null) return;
       if (info.version == storage.getUpdateIgnoredVersion())
         return; // 本版本已选「下个版本提醒我」
@@ -76,7 +91,7 @@ class UpdateService {
     UpdateInfo? info;
     Object? error;
     try {
-      info = await checkForUpdate();
+      info = await checkForUpdate(storage);
     } catch (e) {
       error = e;
     }
@@ -97,6 +112,11 @@ class UpdateService {
       return;
     }
     await showUpdateDialog(context, storage, info);
+  }
+
+  /// 「网盘下载」独立按钮：直接跳转浏览器打开蓝奏云下载页。
+  static Future<void> openNetdisk(BuildContext context) async {
+    await UrlOpener.open(netdiskUrl, context: context);
   }
 
   /// 更新弹窗：展示更新公告 + 三个按钮。
@@ -186,17 +206,29 @@ class UpdateService {
   }
 
   static Future<void> _launchDownload(String url) async {
-    final uri = Uri.parse(url);
-    if (await canLaunchUrl(uri)) {
-      await launchUrl(uri, mode: LaunchMode.externalApplication);
+    await UrlOpener.open(url);
+  }
+
+  /// 根据指定更新源获取最新版本信息。
+  static Future<UpdateInfo?> _fetchLatestBySource(LocalStorageRepo storage) async {
+    final source = storage.getUpdateSource();
+    switch (source) {
+      case sourceGitee:
+        return _fetchGiteeRelease();
+      case sourceGithub:
+      default:
+        return _fetchGithubRelease();
     }
   }
 
-  static Future<UpdateInfo?> _fetchLatestRelease() async {
+  /// GitHub Releases 最新版本。
+  static Future<UpdateInfo?> _fetchGithubRelease() async {
+    final apiUrl =
+        'https://api.github.com/repos/$githubRepo/releases/latest';
     final client = HttpClient();
     client.connectionTimeout = const Duration(seconds: 10);
     try {
-      final request = await client.getUrl(Uri.parse(_apiUrl));
+      final request = await client.getUrl(Uri.parse(apiUrl));
       request.headers.set(
         HttpHeaders.acceptHeader,
         'application/vnd.github+json',
@@ -209,29 +241,60 @@ class UpdateService {
       final body =
           jsonDecode(await response.transform(utf8.decoder).join())
               as Map<String, dynamic>;
-
-      final tagName = (body['tag_name'] as String? ?? '').replaceFirst('v', '');
-      if (tagName.isEmpty) return null;
-
-      // 优先取 APK 附件下载地址；无附件时退回 Release 页面。
-      String downloadUrl = body['html_url'] as String? ?? '';
-      final assets = body['assets'] as List? ?? [];
-      for (final asset in assets) {
-        final name = (asset as Map<String, dynamic>)['name'] as String? ?? '';
-        if (name.toLowerCase().endsWith('.apk')) {
-          downloadUrl = asset['browser_download_url'] as String;
-          break;
-        }
-      }
-
-      return UpdateInfo(
-        version: tagName,
-        changelog: (body['body'] as String? ?? '').trim(),
-        downloadUrl: downloadUrl,
-      );
+      return _parseRelease(body, fallbackHtmlUrl: body['html_url'] as String?);
     } finally {
       client.close();
     }
+  }
+
+  /// Gitee Releases 最新版本（API 结构与 GitHub 一致）。
+  static Future<UpdateInfo?> _fetchGiteeRelease() async {
+    final apiUrl =
+        'https://gitee.com/api/v5/repos/$giteeRepo/releases/latest';
+    final client = HttpClient();
+    client.connectionTimeout = const Duration(seconds: 10);
+    try {
+      final request = await client.getUrl(Uri.parse(apiUrl));
+      request.headers.set(HttpHeaders.acceptHeader, 'application/json');
+      request.headers.set(HttpHeaders.userAgentHeader, 'hero_adventure');
+      final response = await request.close();
+      if (response.statusCode != 200) {
+        throw Exception('Gitee API 返回 ${response.statusCode}');
+      }
+      final body =
+          jsonDecode(await response.transform(utf8.decoder).join())
+              as Map<String, dynamic>;
+      return _parseRelease(body, fallbackHtmlUrl: body['html_url'] as String?);
+    } finally {
+      client.close();
+    }
+  }
+
+  /// 解析 GitHub / Gitee 共用的 Release JSON 结构。
+  static UpdateInfo? _parseRelease(
+    Map<String, dynamic> body, {
+    String? fallbackHtmlUrl,
+  }) {
+    final tagName = (body['tag_name'] as String? ?? '').replaceFirst('v', '');
+    if (tagName.isEmpty) return null;
+
+    // 优先取 APK 附件下载地址；无附件时退回 Release 页面。
+    String downloadUrl = fallbackHtmlUrl ?? '';
+    final assets = body['assets'] as List? ?? [];
+    for (final asset in assets) {
+      final name = (asset as Map<String, dynamic>)['name'] as String? ?? '';
+      if (name.toLowerCase().endsWith('.apk')) {
+        downloadUrl = asset['browser_download_url'] as String;
+        break;
+      }
+    }
+
+    return UpdateInfo(
+      version: tagName,
+      changelog: (body['body'] as String? ?? body['name'] as String? ?? '')
+          .trim(),
+      downloadUrl: downloadUrl,
+    );
   }
 
   /// 简单语义化版本比较：返回 >0 表示 [a] 更新，<0 表示 [b] 更新，0 相同。

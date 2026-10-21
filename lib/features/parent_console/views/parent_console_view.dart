@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_screenutil/flutter_screenutil.dart';
+import '../../../domain/providers/family_provider.dart';
 import '../../../domain/providers/theme_provider.dart';
 
 import 'tabs/task_management_tab.dart';
@@ -24,6 +25,8 @@ class _ParentConsoleViewState extends ConsumerState<ParentConsoleView> {
   @override
   Widget build(BuildContext context) {
     final isTablet = MediaQuery.of(context).size.width >= 600;
+    // 菜单栏文字标签是否展示（家长设置里可开关，实时响应）。
+    final showLabels = ref.watch(showNavLabelsProvider);
 
     final tabs = [
       const ChildProgressTab(), // 儿童进度看板
@@ -75,6 +78,9 @@ class _ParentConsoleViewState extends ConsumerState<ParentConsoleView> {
                 NavigationRail(
                   backgroundColor: Colors.grey.shade100,
                   selectedIndex: _currentIndex,
+                  labelType: showLabels
+                      ? NavigationRailLabelType.all
+                      : NavigationRailLabelType.none,
                   onDestinationSelected: (index) => setState(() => _currentIndex = index),
                   destinations: [
                     for (int i = 0; i < tabs.length; i++)
@@ -95,9 +101,14 @@ class _ParentConsoleViewState extends ConsumerState<ParentConsoleView> {
                 currentIndex: _currentIndex,
                 onTap: (index) => setState(() => _currentIndex = index),
                 selectedItemColor: UltramanTheme.blue,
+                showUnselectedLabels: showLabels,
+                showSelectedLabels: showLabels,
                 items: [
                   for (int i = 0; i < tabs.length; i++)
-                    BottomNavigationBarItem(icon: Icon(icons[i]), label: labels[i]),
+                    BottomNavigationBarItem(
+                      icon: Icon(icons[i]),
+                      label: showLabels ? labels[i] : '',
+                    ),
                 ],
               ),
             ),

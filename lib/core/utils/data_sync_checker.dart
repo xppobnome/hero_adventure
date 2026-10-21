@@ -1,3 +1,5 @@
+import 'dart:io';
+
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_screenutil/flutter_screenutil.dart';
@@ -97,15 +99,16 @@ class DataSyncChecker {
 
     final lastSynced = storage.getLastSyncedUploadAt();
     if (lastSynced.isNotEmpty) {
-      final remote = DateTime.tryParse(remoteModified);
-      final local = DateTime.tryParse(lastSynced);
+      final remote = _parseTime(remoteModified);
+      final local = _parseTime(lastSynced);
       if (remote != null && local != null) {
         // 加 1 秒容差：避免系统时间微小差异导致误判。
-        if (remote.difference(local).inSeconds <= 1) {
+        // 比较时统一用 UTC 时间戳，与坚果云返回的 GMT 基准对齐。
+        if (remote.toUtc().difference(local.toUtc()).inSeconds.abs() <= 1) {
           return null; // 云端不新于本机（相同或更旧）
         }
       }
-    } else if (lastSynced.isEmpty) {
+    } else {
       // 本机从未同步过，无法判断；默认视为有云端数据，提示一次。
       // 用户「更新并合并」或「暂不」后都会写入时间戳，之后不再重复提示。
     }
@@ -223,11 +226,53 @@ class DataSyncChecker {
     }
   }
 
-  static String _formatTime(String iso) {
-    final t = DateTime.tryParse(iso);
-    if (t == null) return iso.isEmpty ? '从未同步' : iso;
+  /// 解析时间字符串，支持：
+  /// - ISO 8601（如 '2026-03-02T10:00:00Z'、'2026-03-02T10:00:00.000Z'）
+  /// - RFC 1123（坚果云 getlastmodified 返回，如 'Thu, 21 Oct 2026 12:00:00 GMT'）
+  ///
+  /// 解析失败返回 null。返回的时间统一为 UTC 基准（ISO 带 Z 的已为 UTC；
+  /// RFC 1123 用 HttpDate.parse 解析得到的也是 UTC）。
+  static DateTime? _parseTime(String raw) {
+    final s = raw.trim();
+    if (s.isEmpty) return null;
+
+    // 1) 优先尝试 ISO 8601（带时区信息）。
+    final iso = DateTime.tryParse(s);
+    if (iso != null) {
+      // 带 Z / +08:00 等时区后缀时，tryParse 已正确换算；
+      // 不带时区后缀（如本地生成的 toIso8601String()）则视为 UTC，
+      // 与坚果云返回的 GMT 基准保持一致，避免本机时区影响比较。
+      if (s.endsWith('Z') || s.contains('+') || s.contains(RegExp(r'-\d\d:\d\d$'))) {
+        return iso;
+      }
+      return DateTime.utc(
+        iso.year,
+        iso.month,
+        iso.day,
+        iso.hour,
+        iso.minute,
+        iso.second,
+        iso.millisecond,
+      );
+    }
+
+    // 2) RFC 1123（坚果云等 WebDAV 服务的 getlastmodified 格式）。
+    try {
+      return HttpDate.parse(s); // 返回 UTC 时间
+    } catch (_) {
+      return null;
+    }
+  }
+
+  /// 把时间格式化为「北京时间」显示（UTC+8）。
+  static String _formatTime(String raw) {
+    final t = _parseTime(raw);
+    if (t == null) return raw.isEmpty ? '从未同步' : raw;
+    // 统一转 UTC 再加 8 小时得到北京时间。
+    final beijing = t.toUtc().add(const Duration(hours: 8));
     String two(int v) => v.toString().padLeft(2, '0');
-    return '${t.year}-${two(t.month)}-${two(t.day)} ${two(t.hour)}:${two(t.minute)}';
+    return '${beijing.year}-${two(beijing.month)}-${two(beijing.day)} '
+        '${two(beijing.hour)}:${two(beijing.minute)}（北京时间）';
   }
 }
 

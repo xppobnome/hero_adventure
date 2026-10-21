@@ -131,6 +131,8 @@ class LocalStorageRepo {
       'update_ignored_version'; // 「下个版本提醒我」忽略的版本号
   static const String keyUpdatePermanentIgnored =
       'update_permanently_ignored'; // 永久忽略更新
+  static const String keyUpdateSource =
+      'update_source'; // 更新源：'github' / 'gitee'
   static const String keyWebDavUrl = 'webdav_url'; // WebDAV 地址
   static const String keyWebDavUser = 'webdav_user'; // WebDAV 账号
   static const String keyWebDavPwd = 'webdav_pwd'; // WebDAV 密码
@@ -140,6 +142,24 @@ class LocalStorageRepo {
       'datasync_auto_check'; // 启动时检查云端数据版本开关
   static const String keyLastSyncedUploadAt =
       'last_synced_upload_at'; // 本机最近一次同步的云端时间戳
+  static const String keyUiMode =
+      'ui_mode'; // 界面样式：'auto' / 'phone' / 'tablet'
+  static const String keyShowNavLabels =
+      'show_nav_labels'; // 家长菜单栏是否展示文字标签
+  static const String keyUploadOnExit =
+      'upload_on_exit'; // 退出前上传数据到云端（若已绑定 WebDAV）
+  static const String keyForceSync =
+      'force_sync_on_change'; // 打卡/兑换/审核等变更时强制同步到云端
+  static const String keyShortcutUseAvatar =
+      'shortcut_use_avatar'; // 桌面快捷方式是否用儿童头像作图标
+  static const String keyShortcutUseName =
+      'shortcut_use_name'; // 桌面快捷方式是否用儿童昵称作名字
+  static const String keyShortcutCustomName =
+      'shortcut_custom_name'; // 桌面快捷方式自定义名字
+  static const String keyShortcutIconPath =
+      'shortcut_icon_path'; // 桌面快捷方式自定义图标本地路径
+  static const String keyUseCustomAppDisplay =
+      'use_custom_app_display'; // 启动图/关于页是否显示自定义头像与名字
 
   bool getUpdateAutoCheck() =>
       _box.get(keyUpdateAutoCheck) as bool? ?? true; // 默认开启
@@ -158,6 +178,13 @@ class LocalStorageRepo {
 
   Future<void> setUpdatePermanentIgnored(bool value) =>
       _box.put(keyUpdatePermanentIgnored, value);
+
+  /// 更新源：'github'（默认）/ 'gitee'。
+  String getUpdateSource() =>
+      _box.get(keyUpdateSource) as String? ?? 'github';
+
+  Future<void> setUpdateSource(String source) =>
+      _box.put(keyUpdateSource, source);
 
   String getWebDavUrl() => _box.get(keyWebDavUrl) as String? ?? '';
 
@@ -203,6 +230,61 @@ class LocalStorageRepo {
   Future<void> setLastSyncedUploadAt(String isoTime) =>
       _box.put(keyLastSyncedUploadAt, isoTime);
 
+  /// 读取界面样式设置：'auto'（默认，按设备型号自动）/ 'phone' / 'tablet'。
+  String getUiMode() => _box.get(keyUiMode) as String? ?? 'auto';
+
+  Future<void> setUiMode(String mode) => _box.put(keyUiMode, mode);
+
+  /// 家长菜单栏是否展示文字标签（默认展示）。
+  bool getShowNavLabels() => _box.get(keyShowNavLabels) as bool? ?? true;
+
+  Future<void> setShowNavLabels(bool value) =>
+      _box.put(keyShowNavLabels, value);
+
+  /// 退出前是否上传数据到云端（默认开启）。
+  bool getUploadOnExit() => _box.get(keyUploadOnExit) as bool? ?? true;
+
+  Future<void> setUploadOnExit(bool value) =>
+      _box.put(keyUploadOnExit, value);
+
+  /// 打卡/兑换/审核等变更时是否强制同步到云端（默认开启）。
+  bool getForceSync() => _box.get(keyForceSync) as bool? ?? true;
+
+  Future<void> setForceSync(bool value) => _box.put(keyForceSync, value);
+
+  /// 桌面快捷方式：是否用儿童头像作图标（默认 false）。
+  bool getShortcutUseAvatar() => _box.get(keyShortcutUseAvatar) as bool? ?? false;
+
+  Future<void> setShortcutUseAvatar(bool value) =>
+      _box.put(keyShortcutUseAvatar, value);
+
+  /// 桌面快捷方式：是否用儿童昵称作名字（默认 false）。
+  bool getShortcutUseName() => _box.get(keyShortcutUseName) as bool? ?? false;
+
+  Future<void> setShortcutUseName(bool value) =>
+      _box.put(keyShortcutUseName, value);
+
+  /// 桌面快捷方式：自定义名字（默认空，空则用默认名）。
+  String getShortcutCustomName() =>
+      _box.get(keyShortcutCustomName) as String? ?? '';
+
+  Future<void> setShortcutCustomName(String value) =>
+      _box.put(keyShortcutCustomName, value);
+
+  /// 桌面快捷方式：自定义图标本地路径（默认空，空则用默认/头像）。
+  String getShortcutIconPath() =>
+      _box.get(keyShortcutIconPath) as String? ?? '';
+
+  Future<void> setShortcutIconPath(String value) =>
+      _box.put(keyShortcutIconPath, value);
+
+  /// 启动图/关于页是否显示自定义头像与名字（默认 false）。
+  bool getUseCustomAppDisplay() =>
+      _box.get(keyUseCustomAppDisplay) as bool? ?? false;
+
+  Future<void> setUseCustomAppDisplay(bool value) =>
+      _box.put(keyUseCustomAppDisplay, value);
+
   // ===== 全量快照 (供二维码/WebDAV/本地备份 同步) =====
   //
   // 快照中额外包含 images 字段：把本地图片（儿童头像 avatarImage、打卡凭证
@@ -239,7 +321,37 @@ class LocalStorageRepo {
       'checkIns': checkIns.map((c) => c.toJson()).toList(),
       'exchanges': getExchanges().map((e) => e.toJson()).toList(),
       'images': images,
+      // 设置与账号信息：WebDAV 配置、设备角色、各类开关等，一并备份，
+      // 确保「换机 / 恢复」后无需重新配置。
+      'settings': _buildSettingsSnapshot(),
       'timestamp': DateTime.now().toIso8601String(),
+    };
+  }
+
+  /// 构建「设置/账号」快照，包含 WebDAV 配置、设备角色、各开关。
+  Map<String, dynamic> _buildSettingsSnapshot() {
+    return {
+      'webdav': {
+        'url': getWebDavUrl(),
+        'username': _box.get(keyWebDavUser) as String? ?? '',
+        'password': _box.get(keyWebDavPwd) as String? ?? '',
+        'directory': _box.get(keyWebDavDir) as String? ?? defaultWebDavDir,
+      },
+      'deviceRole': getDeviceRole(),
+      'updateAutoCheck': getUpdateAutoCheck(),
+      'updateIgnoredVersion': getUpdateIgnoredVersion(),
+      'updatePermanentIgnored': getUpdatePermanentIgnored(),
+      'updateSource': getUpdateSource(),
+      'dataSyncAutoCheck': getDataSyncAutoCheck(),
+      'uiMode': getUiMode(),
+      'showNavLabels': getShowNavLabels(),
+      'uploadOnExit': getUploadOnExit(),
+      'forceSync': getForceSync(),
+      'shortcutUseAvatar': getShortcutUseAvatar(),
+      'shortcutUseName': getShortcutUseName(),
+      'shortcutCustomName': getShortcutCustomName(),
+      'shortcutIconPath': getShortcutIconPath(),
+      'useCustomAppDisplay': getUseCustomAppDisplay(),
     };
   }
 
@@ -301,6 +413,75 @@ class LocalStorageRepo {
             .map((e) => RewardExchange.fromJson(Map<String, dynamic>.from(e)))
             .toList(),
       );
+    }
+    // 恢复设置与账号信息（WebDAV 配置、设备角色、各开关）。
+    if (snapshot['settings'] != null) {
+      await _restoreSettings(Map<String, dynamic>.from(snapshot['settings']));
+    }
+  }
+
+  /// 从快照恢复设置与账号信息。
+  ///
+  /// 说明：设备角色（deviceRole）不强制覆盖，避免「导入他人数据」时本机
+  /// 意外变成对方的专属终端；仅在快照中角色为 'unbound'/'parent' 这类
+  /// 明确值且本地尚未绑定时才写入。WebDAV 配置与各开关则直接覆盖。
+  Future<void> _restoreSettings(Map<String, dynamic> settings) async {
+    // WebDAV 配置
+    final webdav = settings['webdav'];
+    if (webdav is Map) {
+      final url = (webdav['url'] as String? ?? '').trim();
+      if (url.isNotEmpty) {
+        await saveWebDavConfig(
+          url: url,
+          username: webdav['username'] as String? ?? '',
+          password: webdav['password'] as String? ?? '',
+          directory: webdav['directory'] as String? ?? defaultWebDavDir,
+        );
+      }
+    }
+
+    // 各类开关（用类型安全读取，缺失则跳过）。
+    if (settings['updateAutoCheck'] is bool) {
+      await setUpdateAutoCheck(settings['updateAutoCheck'] as bool);
+    }
+    if (settings['updateIgnoredVersion'] is String) {
+      await setUpdateIgnoredVersion(settings['updateIgnoredVersion'] as String);
+    }
+    if (settings['updatePermanentIgnored'] is bool) {
+      await setUpdatePermanentIgnored(settings['updatePermanentIgnored'] as bool);
+    }
+    if (settings['updateSource'] is String) {
+      await setUpdateSource(settings['updateSource'] as String);
+    }
+    if (settings['dataSyncAutoCheck'] is bool) {
+      await setDataSyncAutoCheck(settings['dataSyncAutoCheck'] as bool);
+    }
+    if (settings['uiMode'] is String) {
+      await setUiMode(settings['uiMode'] as String);
+    }
+    if (settings['showNavLabels'] is bool) {
+      await setShowNavLabels(settings['showNavLabels'] as bool);
+    }
+    if (settings['uploadOnExit'] is bool) {
+      await setUploadOnExit(settings['uploadOnExit'] as bool);
+    }
+    if (settings['forceSync'] is bool) {
+      await setForceSync(settings['forceSync'] as bool);
+    }
+    if (settings['shortcutUseAvatar'] is bool) {
+      await setShortcutUseAvatar(settings['shortcutUseAvatar'] as bool);
+    }
+    if (settings['shortcutUseName'] is bool) {
+      await setShortcutUseName(settings['shortcutUseName'] as bool);
+    }
+    if (settings['shortcutCustomName'] is String) {
+      await setShortcutCustomName(settings['shortcutCustomName'] as String);
+    }
+    if (settings['shortcutIconPath'] is String) {
+      await setShortcutIconPath(settings['shortcutIconPath'] as String);
+    }
+    if (settings['useCustomAppDisplay'] is bool) {
+      await setUseCustomAppDisplay(settings['useCustomAppDisplay'] as bool);
     }
   }
 

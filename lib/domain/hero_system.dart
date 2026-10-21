@@ -33,6 +33,16 @@ double levelProgress(int exp) {
   return (into / currentNeed).clamp(0.0, 1.0);
 }
 
+/// 计算距离升到下一级还需要多少经验值（满级返回 0）。
+int expToNextLevel(int exp) {
+  final level = levelFromExp(exp);
+  if (level >= maxLevel) return 0;
+  final nextNeed = expForLevel(level + 1);
+  final into = exp - _expAtLevelStart(level);
+  final remain = nextNeed - into;
+  return remain < 0 ? 0 : remain;
+}
+
 /// 达到某等级所需的累计经验值。
 int _expAtLevelStart(int level) {
   int total = 0;
@@ -105,7 +115,7 @@ const List<HeroEntry> heroCatalog = [
     id: 'taro',
     name: '泰罗奥特曼',
     title: '光之王子',
-    unlockLevel: 12,
+    unlockLevel: 4,
     colorHex: 'E6483D',
     desc: '奥特之父之子，斯特利姆光线威力惊人。',
     imageAsset: 'assets/heroes/taro/taro.png',
@@ -116,7 +126,7 @@ const List<HeroEntry> heroCatalog = [
     id: 'leo',
     name: '雷欧奥特曼',
     title: '格斗之王',
-    unlockLevel: 24,
+    unlockLevel: 8,
     colorHex: 'C0C0C0',
     desc: '狮子座星球的王子，体术格斗的最强者。',
     imageAsset: 'assets/heroes/leo/leo.png',
@@ -127,7 +137,7 @@ const List<HeroEntry> heroCatalog = [
     id: 'mebius',
     name: '梦比优斯奥特曼',
     title: '无限之光',
-    unlockLevel: 36,
+    unlockLevel: 15,
     colorHex: 'E6483D',
     desc: '年轻的地球守护者，与伙伴共同成长。',
     imageAsset: 'assets/heroes/mebius/mebius.png',
@@ -138,7 +148,7 @@ const List<HeroEntry> heroCatalog = [
     id: 'tiga',
     name: '迪迦奥特曼',
     title: '光的化身',
-    unlockLevel: 50,
+    unlockLevel: 25,
     colorHex: '00A0E9',
     desc: '三形态变换，跨越三千万年的传说英雄。',
     imageAsset: 'assets/heroes/tiga/tiga.png',
@@ -149,7 +159,7 @@ const List<HeroEntry> heroCatalog = [
     id: 'zero',
     name: '赛罗奥特曼',
     title: '最强战士',
-    unlockLevel: 65,
+    unlockLevel: 40,
     colorHex: '00A0E9',
     desc: '赛文之子，穿越次元的宇宙最强战斗天才。',
     imageAsset: 'assets/heroes/zero/zero.png',
@@ -160,7 +170,7 @@ const List<HeroEntry> heroCatalog = [
     id: 'zetta',
     name: '泽塔奥特曼',
     title: '赛罗的徒弟',
-    unlockLevel: 82,
+    unlockLevel: 60,
     colorHex: '00A0E9',
     desc: '热血的新生代战士，奥特泽塔光线闪耀宇宙。',
     imageAsset: 'assets/heroes/zetta/zetta.png',

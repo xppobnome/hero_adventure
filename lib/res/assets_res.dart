@@ -21,6 +21,7 @@ class AssetsRes {
   static const String TIGA_SKILL = 'assets/heroes/tiga/tiga_skill.mp3';
   static const String ZERO_SKILL = 'assets/heroes/zero/zero_skill.mp3';
   static const String ZETTA_SKILL = 'assets/heroes/zetta/zetta_skill.mp3';
+  static const String ICON = 'assets/icon.png';
   static const String README = 'assets/images/README.md';
   static const String BEAM_ATTACK = 'assets/lottie/beam_attack.json';
   static const String VICTORY = 'assets/lottie/victory.json';

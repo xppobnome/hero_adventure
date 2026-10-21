@@ -90,7 +90,8 @@ class RewardShopView extends ConsumerWidget {
                     crossAxisCount: MediaQuery.of(context).size.width >= 600 ? 3 : 2,
                     crossAxisSpacing: 12.w,
                     mainAxisSpacing: 12.w,
-                    childAspectRatio: 0.9,
+                    // 手机端格子更高，避免卡片内 Column 内容溢出
+                    childAspectRatio: 0.78,
                   ),
                   itemCount: rewards.length,
                   itemBuilder: (context, index) {
@@ -98,40 +99,47 @@ class RewardShopView extends ConsumerWidget {
                     final affordable = (child?.coins ?? 0) >= reward.costCoins;
                     return Card(
                       shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16.r)),
-                      child: Column(
-                        mainAxisAlignment: MainAxisAlignment.center,
-                        children: [
-                          Container(
-                            padding: EdgeInsets.all(16.w),
-                            decoration: BoxDecoration(
-                              color: UltramanTheme.gold.withValues(alpha: 0.15),
-                              shape: BoxShape.circle,
+                      child: Padding(
+                        padding: EdgeInsets.symmetric(horizontal: 8.w, vertical: 10.h),
+                        child: Column(
+                          mainAxisSize: MainAxisSize.min,
+                          mainAxisAlignment: MainAxisAlignment.center,
+                          children: [
+                            Container(
+                              padding: EdgeInsets.all(14.w),
+                              decoration: BoxDecoration(
+                                color: UltramanTheme.gold.withValues(alpha: 0.15),
+                                shape: BoxShape.circle,
+                              ),
+                              child: Icon(Icons.card_giftcard, color: UltramanTheme.gold, size: 34.r),
                             ),
-                            child: Icon(Icons.card_giftcard, color: UltramanTheme.gold, size: 36.r),
-                          ),
-                          SizedBox(height: 12.h),
-                          Text(
-                            reward.title,
-                            style: TextStyle(fontSize: 15.sp, fontWeight: FontWeight.bold),
-                            textAlign: TextAlign.center,
-                          ),
-                      SizedBox(height: 6.h),
-                      Text(
-                        '${reward.costCoins} 能量币',
-                        style: TextStyle(fontSize: 14.sp, color: UltramanTheme.gold, fontWeight: FontWeight.bold),
-                      ),
-                      SizedBox(height: 10.h),
-                      ElevatedButton(
-                        onPressed: () => _requestExchange(context, ref, reward),
-                        style: ElevatedButton.styleFrom(
-                          backgroundColor: affordable ? UltramanTheme.blue : Colors.grey,
-                          padding: EdgeInsets.symmetric(horizontal: 16.w, vertical: 6.h),
+                            SizedBox(height: 10.h),
+                            Text(
+                              reward.title,
+                              style: TextStyle(fontSize: 15.sp, fontWeight: FontWeight.bold),
+                              textAlign: TextAlign.center,
+                              maxLines: 2,
+                              overflow: TextOverflow.ellipsis,
+                            ),
+                            SizedBox(height: 6.h),
+                            Text(
+                              '${reward.costCoins} 能量币',
+                              style: TextStyle(fontSize: 14.sp, color: UltramanTheme.gold, fontWeight: FontWeight.bold),
+                            ),
+                            SizedBox(height: 8.h),
+                            ElevatedButton(
+                              onPressed: () => _requestExchange(context, ref, reward),
+                              style: ElevatedButton.styleFrom(
+                                backgroundColor: affordable ? UltramanTheme.blue : Colors.grey,
+                                padding: EdgeInsets.symmetric(horizontal: 16.w, vertical: 4.h),
+                                minimumSize: Size.zero,
+                              ),
+                              child: Text('兑换', style: TextStyle(color: Colors.white, fontSize: 13.sp)),
+                            ),
+                          ],
                         ),
-                        child: Text('兑换', style: TextStyle(color: Colors.white, fontSize: 13.sp)),
                       ),
-                    ],
-                  ),
-                );
+                    );
               },
             ),
           ),

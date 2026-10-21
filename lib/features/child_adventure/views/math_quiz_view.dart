@@ -347,7 +347,7 @@ class _MathQuizViewState extends ConsumerState<MathQuizView> {
             const SizedBox(width: 12),
             // 算式
             Text(
-              '${q.a} ${q.op} ${q.b} =',
+              q.text.replaceAll(' = ?', ' ='),
               style: const TextStyle(
                 fontSize: 22,
                 fontWeight: FontWeight.bold,

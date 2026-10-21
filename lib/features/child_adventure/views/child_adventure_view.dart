@@ -3,7 +3,9 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:image_picker/image_picker.dart';
 
 import '../../../core/utils/audio_manager.dart';
+import '../../../core/utils/image_compressor.dart';
 import '../../../core/widgets/hero_showcase_dialog.dart';
+import '../../../core/widgets/pin_input_dialog.dart';
 import '../../../core/widgets/ultraman_visuals.dart';
 import '../../../domain/check_in_logic.dart';
 import '../../../domain/hero_system.dart';
@@ -145,10 +147,12 @@ class _ChildAdventureViewState extends ConsumerState<ChildAdventureView> {
           ),
         );
       } else {
-        // 打卡成功：播放 victory 音效 + 展示胜利动画
+        // 打卡成功：播放 victory 音效 + 展示庆祝祝贺动画
         AudioManager().playVictory();
         setState(() => _showVictory = true);
-        await Future.delayed(const Duration(milliseconds: 1600));
+        // 庆祝动画由 CelebrationEffect 的 onCompleted 回调关闭覆盖层，
+        // 这里等待动画时长 (约 2400ms) 后复位状态并提示奖励。
+        await Future.delayed(const Duration(milliseconds: 2400));
         if (!mounted) return;
         setState(() {
           _isPlayingAnimation = false;
@@ -177,7 +181,7 @@ class _ChildAdventureViewState extends ConsumerState<ChildAdventureView> {
       barrierColor: Colors.black.withValues(alpha: 0.55),
       transitionDuration: const Duration(milliseconds: 260),
       pageBuilder: (context, animation, secondaryAnimation) {
-        return HeroShowcaseDialog(hero: hero, badgeText: '变身！');
+        return HeroShowcaseDialog(hero: hero, badgeText: '战斗胜利');
       },
       transitionBuilder: (context, animation, secondaryAnimation, child) {
         final curved = CurvedAnimation(
@@ -205,51 +209,50 @@ class _ChildAdventureViewState extends ConsumerState<ChildAdventureView> {
   Future<String?> _pickPhoto() async {
     final picker = ImagePicker();
     final picked = await picker.pickImage(source: ImageSource.camera);
-    if (picked != null) return picked.path;
-    return null;
+    if (picked == null) return null;
+    // 复制到持久目录，避免 cache 临时文件被清理后凭证读不到/无法备份。
+    return ImageCompressor.persistPickedImage(picked.path);
   }
 
-  void _showUnlockDeviceDialog() {
-    final pinController = TextEditingController();
-    showDialog(
+  Future<void> _showUnlockDeviceDialog() async {
+    debugPrint('[PIN解除] 打开解除绑定对话框，deviceRole=${ref.read(deviceRoleProvider)}, childId=${widget.childId}');
+    final unlocked = await showDialog<bool>(
       context: context,
-      builder: (ctx) => AlertDialog(
-        title: const Text(
-          '安全锁 - 解除设备绑定',
-          style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
-        ),
-        content: TextField(
-          controller: pinController,
-          keyboardType: TextInputType.number,
-          maxLength: 4,
-          obscureText: true,
-          decoration: const InputDecoration(labelText: '请输入家长 PIN 码解锁'),
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(ctx),
-            child: const Text('取消'),
-          ),
-          ElevatedButton(
-            onPressed: () {
-              final correctPin =
-                  ref.read(familyProfileProvider)?.pinCode ?? '0000';
-              if (pinController.text == correctPin) {
-                ref.read(deviceRoleProvider.notifier).state = 'unbound';
-                ref.read(storageProvider).saveDeviceRole('unbound');
-                Navigator.pop(ctx);
-                Navigator.pushReplacementNamed(context, '/');
-              } else {
-                ScaffoldMessenger.of(
-                  context,
-                ).showSnackBar(const SnackBar(content: Text('警报！密码错误！')));
-              }
-            },
-            child: const Text('确认解除'),
-          ),
-        ],
+      builder: (ctx) => PinInputDialog(
+        title: '安全锁 - 解除设备绑定',
+        subtitle: '请输入家长 PIN 码解锁',
+        onSubmit: (pin) async {
+          final correctPin =
+              ref.read(familyProfileProvider)?.pinCode ?? '0000';
+          if (pin == correctPin) {
+            // 仅返回 true 让对话框关闭；状态更新与导航放到对话框关闭后，
+            // 避免更新 deviceRole 触发 InitialRouteWrapper 重建、提前销毁
+            // 本 State 导致对话框 Future 悬挂或导航失效。
+            debugPrint('[PIN解除] PIN 正确，返回 true（暂不改状态）');
+            return true;
+          }
+          ScaffoldMessenger.of(
+            context,
+          ).showSnackBar(const SnackBar(content: Text('警报！密码错误！')));
+          return false;
+        },
       ),
     );
+
+    debugPrint('[PIN解除] showDialog 返回 unlocked=$unlocked, mounted=$mounted');
+    if (unlocked != true || !mounted) return;
+
+    // 对话框已关闭，现在更新设备角色为 unbound 并持久化。
+    ref.read(deviceRoleProvider.notifier).state = 'unbound';
+    ref.read(storageProvider).saveDeviceRole('unbound');
+    debugPrint('[PIN解除] 已置 deviceRole=unbound');
+
+    // 用 root navigator 弹回根（home = InitialRouteWrapper）。
+    // deviceRole 已变 unbound，home 会重建为「终端身份识别」界面。
+    final navigator = Navigator.of(context, rootNavigator: true);
+    debugPrint('[PIN解除] popUntil 前 canPop=${navigator.canPop()}');
+    navigator.popUntil((route) => route.isFirst);
+    debugPrint('[PIN解除] popUntil 完成');
   }
 
   @override
@@ -336,11 +339,22 @@ class _ChildAdventureViewState extends ConsumerState<ChildAdventureView> {
               ),
             ],
           ),
-          // 攻击/胜利特效覆盖层 (跟随当前出战英雄)
+          // 攻击/庆祝特效覆盖层 (跟随当前出战英雄)
           if (_isPlayingAnimation)
             Positioned.fill(
               child: _showVictory
-                  ? VictoryEffect(hero: _activeHero)
+                  ? CelebrationEffect(
+                      title: '战斗胜利',
+                      subtitle: '获得奖励',
+                      onCompleted: () {
+                        if (mounted) {
+                          setState(() {
+                            _isPlayingAnimation = false;
+                            _showVictory = false;
+                          });
+                        }
+                      },
+                    )
                   : BeamAttackEffect(hero: _activeHero),
             ),
         ],

@@ -111,6 +111,17 @@ class AudioManager {
     await _playAsset('assets/audio/transform.mp3');
   }
 
+  /// 立即停止当前正在播放的音效。
+  ///
+  /// 供弹窗被手动关闭（如点击遮罩）时调用，确保声音与弹窗同步消失。
+  Future<void> stop() async {
+    try {
+      await _player.stop();
+    } catch (_) {
+      // 忽略停止失败
+    }
+  }
+
   // 报错/警报音效
   Future<void> playError() async {
     await ensureSession();

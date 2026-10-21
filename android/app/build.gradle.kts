@@ -1,7 +1,17 @@
+import java.util.Properties
+import java.io.FileInputStream
+
 plugins {
     id("com.android.application")
     // The Flutter Gradle Plugin must be applied after the Android and Kotlin Gradle plugins.
     id("dev.flutter.flutter-gradle-plugin")
+}
+
+// 读取签名配置（android/key.properties，已被 .gitignore 忽略，勿提交）
+val keystoreProperties = Properties()
+val keystorePropertiesFile = rootProject.file("key.properties")
+if (keystorePropertiesFile.exists()) {
+    keystoreProperties.load(FileInputStream(keystorePropertiesFile))
 }
 
 android {
@@ -29,14 +39,31 @@ android {
         // You can force using the value of versionCode by specifying the `-P force-version-code-ignoring-abi=true`
         // flag during build.
         versionCode = flutter.versionCode
-        versionName = flutter.versionName
+        // 显示版本号：1.0.0 Beta（Android versionName 支持任意字符串）
+        versionName = "1.0.0 Beta"
+    }
+
+    signingConfigs {
+        // 正式签名：读取 android/key.properties（勿提交）。
+        // 若 key.properties 不存在（如 CI / 他人 clone 后），退回 debug 签名保证能编译。
+        if (keystorePropertiesFile.exists()) {
+            create("release") {
+                keyAlias = keystoreProperties["keyAlias"] as String
+                keyPassword = keystoreProperties["keyPassword"] as String
+                storeFile = file(keystoreProperties["storeFile"] as String)
+                storePassword = keystoreProperties["storePassword"] as String
+            }
+        }
     }
 
     buildTypes {
         release {
-            // TODO: Add your own signing config for the release build.
-            // Signing with the debug keys for now, so `flutter run --release` works.
-            signingConfig = signingConfigs.getByName("debug")
+            // 优先使用正式签名；若未配置 key.properties 则退回 debug 签名。
+            signingConfig = if (keystorePropertiesFile.exists()) {
+                signingConfigs.getByName("release")
+            } else {
+                signingConfigs.getByName("debug")
+            }
         }
     }
 }

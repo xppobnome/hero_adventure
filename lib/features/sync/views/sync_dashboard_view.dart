@@ -3,6 +3,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_screenutil/flutter_screenutil.dart';
 
 import '../../../core/utils/local_backup.dart';
+import '../../../core/utils/url_opener.dart';
 import '../../../data/repositories/local_storage_repo.dart';
 import '../../../data/repositories/sync_repo.dart';
 import '../../../domain/providers/family_provider.dart';
@@ -139,7 +140,7 @@ class _SyncDashboardViewState extends ConsumerState<SyncDashboardView> {
           context,
         ).showSnackBar(const SnackBar(content: Text('数据恢复成功！')));
 
-        // 【新增】：如果是在全新设备恢复数据，恢复完成后直接前往主页
+        // 如果是在全新设备恢复数据，恢复完成后直接前往主页
         if (mounted) {
           Navigator.pushAndRemoveUntil(
             context,
@@ -149,13 +150,57 @@ class _SyncDashboardViewState extends ConsumerState<SyncDashboardView> {
         }
       }
     } catch (e) {
-      ScaffoldMessenger.of(
-        context,
-      ).showSnackBar(SnackBar(content: Text('同步失败: $e')));
+      // 判断是否为账号/密码错误（401 未授权）。
+      final msg = e.toString();
+      final isAuthError = msg.contains('401') || msg.contains('403');
+      if (isAuthError) {
+        _showAuthErrorDialog();
+      } else {
+        ScaffoldMessenger.of(
+          context,
+        ).showSnackBar(SnackBar(content: Text('同步失败: $e')));
+      }
       print('同步失败: $e');
     } finally {
       setState(() => _isLoading = false);
     }
+  }
+
+  /// 账号 / 密码错误提示弹窗：附「坚果云教程」按钮跳转帮助页。
+  void _showAuthErrorDialog() {
+    showDialog(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: Text(
+          '账号或密码错误',
+          style: TextStyle(fontSize: 18.sp, fontWeight: FontWeight.bold),
+        ),
+        content: Text(
+          'WebDAV 登录失败，请检查坚果云账号与授权密码是否正确。\n\n'
+          '提示：坚果云的 WebDAV 密码需要在「账户信息 → 安全选项 → 第三方应用管理」中单独设置，'
+          '与登录密码不同。',
+          style: TextStyle(fontSize: 14.sp),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(ctx),
+            child: const Text('知道了'),
+          ),
+          ElevatedButton.icon(
+            icon: const Icon(Icons.help_outline, size: 18),
+            label: const Text('坚果云教程'),
+            style: ElevatedButton.styleFrom(
+              backgroundColor: const Color(0xFF00A0E9),
+              foregroundColor: Colors.white,
+            ),
+            onPressed: () {
+              Navigator.pop(ctx);
+              UrlOpener.open('https://help.jianguoyun.com/?p=2064', context: context);
+            },
+          ),
+        ],
+      ),
+    );
   }
 
   @override
@@ -206,7 +251,7 @@ class _SyncDashboardViewState extends ConsumerState<SyncDashboardView> {
                     icon: Icons.folder_outlined,
                     iconColor: Colors.green,
                     title: '本地文件备份',
-                    subtitle: '导出 JSON 备份文件，或从文件导入恢复',
+                    subtitle: '导出 .herobackup 备份文件（含图片），或从文件导入恢复',
                     children: [
                       OutlinedButton.icon(
                         icon: const Icon(Icons.file_upload_outlined, size: 22),

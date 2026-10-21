@@ -1,16 +1,16 @@
-import 'dart:convert';
 import 'dart:io';
 import 'dart:math';
+import 'dart:typed_data';
 
 import '../../data/repositories/local_storage_repo.dart';
+import 'backup_pack.dart';
 
 /// 局域网面对面同步服务（换机助手式）。
 ///
-/// 发送方：开启一个本地 HTTP 服务器，把全量快照（含图片 base64）挂载到一个
-/// 带 token 的路径上；二维码只承载「http://发送方IP:端口/token」这一轻量握手信息。
-/// 接收方：扫描二维码 → 解析 IP:端口 → HTTP GET 拉取快照 → restoreSnapshot。
-///
-/// 相比把整份数据塞进单个二维码，局域网传输不受二维码容量限制，图片也能完整同步。
+/// 发送方：开启一个本地 HTTP 服务器，把全量数据 + 图片打包成 `.herobackup`
+/// 压缩包挂载到一个带 token 的路径上；二维码只承载「http://发送方IP:端口/token」
+/// 这一轻量握手信息。接收方：扫描二维码 → 解析 IP:端口 → HTTP GET 拉取压缩包
+/// → 解包恢复。图片以真实文件打包，不受二维码容量限制。
 class LanSyncServer {
   LanSyncServer._();
 
@@ -58,9 +58,9 @@ class LanSyncServer {
       throw Exception('未检测到局域网，请连接同一 WiFi 或开启热点');
     }
 
-    // 一次性读取快照（含图片压缩），挂到内存中等待拉取。
+    // 一次性读取快照并打包成 .herobackup 压缩包（含图片真实文件），挂到内存等待拉取。
     final snapshot = await storage.buildSnapshot();
-    final body = utf8.encode(jsonEncode(snapshot));
+    final body = await BackupPack.pack(snapshot);
 
     final token = _randomToken();
     final server = await HttpServer.bind(InternetAddress.anyIPv4, 0);
@@ -73,8 +73,7 @@ class LanSyncServer {
           request.response.statusCode = HttpStatus.ok;
           request.response.headers.contentType = ContentType(
             'application',
-            'json',
-            charset: 'utf-8',
+            'octet-stream',
           );
           request.response.headers.set('Access-Control-Allow-Origin', '*');
           request.response.add(body);
@@ -94,7 +93,7 @@ class LanSyncServer {
     return LanServerInfo(ip: ip, port: port, token: token, server: server);
   }
 
-  /// 从发送方拉取快照并恢复到本地。
+  /// 从发送方拉取 .herobackup 压缩包并恢复到本地。
   static Future<void> fetchAndRestore(
     LocalStorageRepo storage,
     String ip,
@@ -111,8 +110,9 @@ class LanSyncServer {
       if (response.statusCode != HttpStatus.ok) {
         throw Exception('拉取失败：HTTP ${response.statusCode}');
       }
-      final body = await response.transform(utf8.decoder).join();
-      final snapshot = jsonDecode(body) as Map<String, dynamic>;
+      final bytes = await response
+          .fold<List<int>>([], (prev, chunk) => prev..addAll(chunk));
+      final snapshot = await BackupPack.unpack(Uint8List.fromList(bytes));
       await storage.restoreSnapshot(snapshot);
     } finally {
       client.close();

@@ -1,5 +1,6 @@
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:uuid/uuid.dart';
+import '../../core/utils/force_sync.dart';
 import '../../data/models/reward_exchange.dart';
 import '../../data/repositories/local_storage_repo.dart';
 import 'family_provider.dart';
@@ -38,6 +39,8 @@ class ExchangeNotifier extends StateNotifier<List<RewardExchange>> {
     );
     state = [exchange, ...state];
     await _storage.saveExchanges(state);
+    // 兑换申请是重要变更，若开启「变更时强制同步」则自动上传云端。
+    await ForceSyncHelper.maybeSync(_storage);
   }
 
   /// 家长审批兑换：approve=true 发放，否则驳回。
@@ -49,5 +52,7 @@ class ExchangeNotifier extends StateNotifier<List<RewardExchange>> {
       return e;
     }).toList();
     await _storage.saveExchanges(state);
+    // 兑换审批是重要变更，若开启「变更时强制同步」则自动上传云端。
+    await ForceSyncHelper.maybeSync(_storage);
   }
 }

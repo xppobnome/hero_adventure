@@ -2,6 +2,7 @@ import 'dart:convert';
 
 import 'package:http/http.dart' as http;
 
+import '../../core/utils/backup_pack.dart';
 import 'local_storage_repo.dart';
 
 /// WebDAV 云端同步仓库。
@@ -9,11 +10,14 @@ import 'local_storage_repo.dart';
 /// 直接用 [http] 包实现 WebDAV 的 PUT（上传）/ GET（下载），
 /// 替代 webdav_client 库——该库在上传时用 Dio Stream 且未设置 content-type，
 /// 会触发 Dio 的 `_MultiStream cannot be used to imply a default content-type` 报错。
+///
+/// 数据以 `.herobackup` 压缩包形式传输：打包时把图片作为真实文件收进 ZIP，
+/// 从根本上解决「图片路径失效导致图片无法同步」的问题。
 class SyncRepo {
   final LocalStorageRepo _localStorage;
 
   /// 云端数据快照的文件名（拼接在用户配置的目录路径下）。
-  static const String remoteFileName = 'hero_data.json';
+  static const String remoteFileName = 'hero_data.${BackupPack.extension}';
 
   SyncRepo(this._localStorage);
 
@@ -36,14 +40,14 @@ class SyncRepo {
     return Uri.parse(fullPath);
   }
 
-  /// 生成请求头：JSON content-type + HTTP Basic Auth。
+  /// 生成请求头：二进制 content-type + HTTP Basic Auth。
   ///
   /// 认证信息用 Authorization 头（Base64 编码）传递，而非塞进 URL 的 userInfo，
   /// 避免账号/密码含特殊字符（@ : # % 中文等）时 Uri.parse 抛
   /// FormatException: Invalid character。
   Map<String, String> _headers(String username, String password) {
     final headers = <String, String>{
-      'Content-Type': 'application/json; charset=utf-8',
+      'Content-Type': 'application/octet-stream',
     };
     if (username.isNotEmpty) {
       final credentials = base64Encode(utf8.encode('$username:$password'));
@@ -52,7 +56,7 @@ class SyncRepo {
     return headers;
   }
 
-  // 备份全量数据到 WebDAV。
+  // 备份全量数据（含图片）到 WebDAV。
   // 上传后通过 PROPFIND 读取远端文件的修改时间（getlastmodified），
   // 作为数据版本判断依据（无需在 JSON 快照中写自定义字段）。
   Future<void> backupToWebDav({
@@ -62,8 +66,7 @@ class SyncRepo {
     required String directory,
   }) async {
     final snapshot = await _localStorage.buildSnapshot();
-    final jsonString = jsonEncode(snapshot);
-    final bytesData = utf8.encode(jsonString);
+    final bytes = await BackupPack.pack(snapshot);
 
     // 先确保远端目录存在（坚果云上传到不存在目录会报 409 AncestorsNotFound）。
     await _ensureRemoteDirectory(
@@ -75,7 +78,7 @@ class SyncRepo {
 
     final uri = _buildUri(url, directory);
     final resp = await http
-        .put(uri, headers: _headers(username, password), body: bytesData)
+        .put(uri, headers: _headers(username, password), body: bytes)
         .timeout(const Duration(seconds: 30));
 
     if (resp.statusCode < 200 || resp.statusCode >= 300) {
@@ -122,7 +125,7 @@ class SyncRepo {
     }
   }
 
-  /// 拉取云端快照（不写入本地）。
+  /// 拉取云端快照（不写入本地），返回可交给 restoreSnapshot 的 JSON Map。
   Future<Map<String, dynamic>> fetchRemoteSnapshot({
     required String url,
     required String username,
@@ -137,7 +140,8 @@ class SyncRepo {
     if (resp.statusCode != 200) {
       throw Exception('WebDAV 读取失败：HTTP ${resp.statusCode} ${resp.body}');
     }
-    return jsonDecode(utf8.decode(resp.bodyBytes)) as Map<String, dynamic>;
+    // 云端存的是 .herobackup 压缩包，解包得到数据 + 还原图片。
+    return BackupPack.unpack(resp.bodyBytes);
   }
 
   /// 读取云端文件的最后修改时间（WebDAV 的 getlastmodified 属性）。

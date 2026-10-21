@@ -46,6 +46,9 @@ class ChildDashboard extends ConsumerWidget {
                   color: UltramanTheme.gold,
                   label: '当前等级',
                   value: 'LV.${stats.level}',
+                  footer: stats.expToNext > 0
+                      ? '距离升级还有 ${stats.expToNext} EXP'
+                      : '已满级',
                 ),
                 const SizedBox(width: 12),
                 _statItem(
@@ -108,6 +111,7 @@ class ChildDashboard extends ConsumerWidget {
     required Color color,
     required String label,
     required String value,
+    String? footer,
   }) {
     return Expanded(
       child: Container(
@@ -138,6 +142,16 @@ class ChildDashboard extends ConsumerWidget {
               label,
               style: const TextStyle(color: Colors.white70, fontSize: 10),
             ),
+            if (footer != null) ...[
+              const SizedBox(height: 2),
+              Text(
+                footer,
+                style: TextStyle(
+                  color: UltramanTheme.gold.withValues(alpha: 0.9),
+                  fontSize: 9,
+                ),
+              ),
+            ],
           ],
         ),
       ),

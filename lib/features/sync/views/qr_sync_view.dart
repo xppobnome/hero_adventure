@@ -1,6 +1,3 @@
-import 'dart:convert';
-import 'dart:io';
-
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_screenutil/flutter_screenutil.dart';
@@ -14,8 +11,9 @@ import '../../../domain/providers/exchange_provider.dart';
 import '../../../domain/providers/family_provider.dart';
 import '../../../domain/providers/reward_provider.dart';
 import '../../../domain/providers/task_provider.dart';
+import '../../../domain/providers/theme_provider.dart';
 
-/// 局域网面对面同步（换机助手式）+ 本地文件备份。
+/// 局域网面对面同步（换机助手式）。
 ///
 /// 发送方开启本地 HTTP 服务器，二维码只承载「http://IP:端口/token」握手信息，
 /// 另一设备扫描后通过局域网 HTTP 拉取全量快照（含图片）导入。
@@ -28,7 +26,8 @@ class QrSyncView extends ConsumerStatefulWidget {
 }
 
 class _QrSyncViewState extends ConsumerState<QrSyncView> {
-  bool _showScanner = false;
+  // 当前视图：'chooser' 选择发送/接收，'sender' 发送方，'scanner' 接收方。
+  String _view = 'chooser';
 
   // 发送方状态
   bool _isServing = false;
@@ -124,7 +123,7 @@ class _QrSyncViewState extends ConsumerState<QrSyncView> {
     final port = uri.hasPort ? uri.port : 80;
     final token = uri.pathSegments[1];
 
-    setState(() => _showScanner = false);
+    setState(() => _view = 'chooser');
 
     // 显示拉取进度
     showDialog(
@@ -159,20 +158,7 @@ class _QrSyncViewState extends ConsumerState<QrSyncView> {
     );
   }
 
-  /// 导出全量数据快照到本地 JSON 文件。
-  Future<void> _exportToFile() async {
-    try {
-      final path = await LocalBackup.exportToFile(ref.read(storageProvider));
-      if (path == null) return;
-      if (!mounted) return;
-      _showSnack('导出成功：$path', red: false);
-    } catch (e) {
-      if (!mounted) return;
-      _showSnack('导出失败：$e', red: true);
-    }
-  }
-
-  /// 从本地 JSON 文件导入并恢复全量数据。
+  /// 「数据导入」：从本地 .herobackup 文件导入数据。
   Future<void> _importFromFile() async {
     try {
       final ok = await LocalBackup.importFromFile(ref.read(storageProvider));
@@ -192,30 +178,31 @@ class _QrSyncViewState extends ConsumerState<QrSyncView> {
       appBar: AppBar(
         title: Text('面对面同步', style: TextStyle(fontSize: 20.sp)),
         backgroundColor: Colors.grey.shade900,
+        // 引导界面右上角提供「数据导入」入口
         actions: [
-          TextButton(
-            onPressed: () {
-              _stopServing();
-              setState(() {
-                _showScanner = !_showScanner;
-              });
-            },
-            child: Text(
-              _showScanner ? '发起传输' : '扫描接收',
-              style: TextStyle(color: Colors.white, fontSize: 14.sp),
+          if (_view == 'chooser')
+            TextButton(
+              onPressed: _importFromFile,
+              child: const Text(
+                '数据导入',
+                style: TextStyle(color: Colors.white, fontSize: 15),
+              ),
             ),
-          ),
         ],
       ),
       body: SafeArea(
         top: false,
-        child: _showScanner ? _buildScanner() : _buildSender(),
+        child: switch (_view) {
+          'sender' => _buildSender(),
+          'scanner' => _buildScanner(),
+          _ => _buildChooser(),
+        },
       ),
     );
   }
 
-  /// 发送方界面：发起局域网传输 + 本地文件备份。
-  Widget _buildSender() {
+  /// 模式选择入口：两个明确的「我是发送方 / 我是接收方」按钮。
+  Widget _buildChooser() {
     return SingleChildScrollView(
       padding: EdgeInsets.all(24.w),
       child: Column(
@@ -224,6 +211,114 @@ class _QrSyncViewState extends ConsumerState<QrSyncView> {
           Text(
             '面对面传输（局域网）',
             style: TextStyle(fontSize: 20.sp, fontWeight: FontWeight.bold),
+          ),
+          SizedBox(height: 12.h),
+          Text(
+            '两台设备连接同一个 WiFi（或一台开热点），一方发起传输，另一方扫描二维码接收全部数据（含图片）。',
+            style: TextStyle(fontSize: 14.sp, color: Colors.grey.shade600),
+          ),
+          SizedBox(height: 32.h),
+          _roleButton(
+            icon: Icons.upload,
+            title: '我是发送方',
+            desc: '本机发起传输，生成同步二维码',
+            onTap: () {
+              // 直接进入发送方界面并立即开启服务器展示二维码，
+              // 无需再额外点一次「开始面对面传输」。
+              setState(() => _view = 'sender');
+              _startServing();
+            },
+          ),
+          SizedBox(height: 16.h),
+          _roleButton(
+            icon: Icons.qr_code_scanner,
+            title: '我是接收方',
+            desc: '扫描另一台设备生成的同步码',
+            onTap: () => setState(() => _view = 'scanner'),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _roleButton({
+    required IconData icon,
+    required String title,
+    required String desc,
+    required VoidCallback onTap,
+  }) {
+    return Container(
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(16.r),
+        boxShadow: [
+          BoxShadow(
+            color: Colors.black.withValues(alpha: 0.08),
+            blurRadius: 12,
+          ),
+        ],
+      ),
+      child: InkWell(
+        borderRadius: BorderRadius.circular(16.r),
+        onTap: onTap,
+        child: Padding(
+          padding: EdgeInsets.all(20.w),
+          child: Row(
+            children: [
+              Container(
+                padding: EdgeInsets.all(12.w),
+                decoration: BoxDecoration(
+                  color: UltramanTheme.blue.withValues(alpha: 0.1),
+                  shape: BoxShape.circle,
+                ),
+                child: Icon(icon, color: UltramanTheme.blue, size: 28.r),
+              ),
+              SizedBox(width: 16.w),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      title,
+                      style: TextStyle(
+                        fontSize: 17.sp,
+                        fontWeight: FontWeight.bold,
+                      ),
+                    ),
+                    SizedBox(height: 4.h),
+                    Text(
+                      desc,
+                      style: TextStyle(fontSize: 13.sp, color: Colors.grey.shade600),
+                    ),
+                  ],
+                ),
+              ),
+              const Icon(Icons.chevron_right, color: Colors.grey),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
+  /// 发送方界面：发起局域网传输。
+  Widget _buildSender() {
+    return SingleChildScrollView(
+      padding: EdgeInsets.all(24.w),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          Row(
+            children: [
+              IconButton(
+                icon: const Icon(Icons.arrow_back),
+                onPressed: () => setState(() => _view = 'chooser'),
+              ),
+              Text(
+                '发起传输',
+                style: TextStyle(fontSize: 20.sp, fontWeight: FontWeight.bold),
+              ),
+            ],
           ),
           SizedBox(height: 12.h),
           Text(
@@ -274,47 +369,23 @@ class _QrSyncViewState extends ConsumerState<QrSyncView> {
               onPressed: _stopServing,
             ),
           ] else ...[
-            ElevatedButton.icon(
-              icon: const Icon(Icons.wifi_tethering),
-              label: const Text('开始面对面传输'),
-              style: ElevatedButton.styleFrom(
-                padding: EdgeInsets.symmetric(vertical: 16.h),
+            // 正在启动局域网服务器（进入发送方界面时已自动发起），
+            // 启动失败会通过 _showLanHint 弹窗提示。
+            Container(
+              padding: EdgeInsets.symmetric(vertical: 40.h),
+              alignment: Alignment.center,
+              child: Column(
+                children: [
+                  const CircularProgressIndicator(),
+                  SizedBox(height: 16.h),
+                  Text(
+                    '正在生成同步二维码…',
+                    style: TextStyle(fontSize: 14.sp, color: Colors.grey.shade600),
+                  ),
+                ],
               ),
-              onPressed: _startServing,
             ),
           ],
-
-          SizedBox(height: 32.h),
-          const Divider(),
-          SizedBox(height: 16.h),
-          Text(
-            '本地文件备份',
-            style: TextStyle(fontSize: 18.sp, fontWeight: FontWeight.bold),
-          ),
-          SizedBox(height: 16.h),
-          OutlinedButton.icon(
-            icon: const Icon(Icons.file_upload_outlined),
-            label: const Text('导出到本地文件'),
-            style: OutlinedButton.styleFrom(
-              padding: EdgeInsets.symmetric(vertical: 14.h),
-            ),
-            onPressed: _exportToFile,
-          ),
-          SizedBox(height: 12.h),
-          ElevatedButton.icon(
-            icon: const Icon(Icons.file_download_outlined),
-            label: const Text('从本地文件导入'),
-            style: ElevatedButton.styleFrom(
-              padding: EdgeInsets.symmetric(vertical: 14.h),
-            ),
-            onPressed: _importFromFile,
-          ),
-          SizedBox(height: 8.h),
-          Text(
-            '导出会生成 JSON 备份文件；导入会覆盖当前全部家庭数据。',
-            style: TextStyle(fontSize: 12.sp, color: Colors.grey),
-            textAlign: TextAlign.center,
-          ),
         ],
       ),
     );
@@ -324,6 +395,21 @@ class _QrSyncViewState extends ConsumerState<QrSyncView> {
   Widget _buildScanner() {
     return Column(
       children: [
+        Row(
+          children: [
+            IconButton(
+              icon: const Icon(Icons.arrow_back),
+              onPressed: () {
+                _stopServing();
+                setState(() => _view = 'chooser');
+              },
+            ),
+            Text(
+              '扫描接收',
+              style: TextStyle(fontSize: 20.sp, fontWeight: FontWeight.bold),
+            ),
+          ],
+        ),
         Expanded(
           child: MobileScanner(
             onDetect: (capture) {

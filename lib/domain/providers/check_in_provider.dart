@@ -1,5 +1,6 @@
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:uuid/uuid.dart';
+import '../../core/utils/force_sync.dart';
 import '../../data/models/check_in_record.dart';
 import '../../data/repositories/local_storage_repo.dart';
 import 'family_provider.dart';
@@ -43,6 +44,8 @@ class CheckInNotifier extends StateNotifier<List<CheckInRecord>> {
     );
     state = [record, ...state];
     await _storage.saveCheckIns(state);
+    // 打卡是重要变更，若开启「变更时强制同步」则自动上传云端。
+    await ForceSyncHelper.maybeSync(_storage);
   }
 
   /// 家长审核：approve=true 通过 (completed)，否则驳回 (rejected)。
@@ -54,6 +57,8 @@ class CheckInNotifier extends StateNotifier<List<CheckInRecord>> {
       return r;
     }).toList();
     await _storage.saveCheckIns(state);
+    // 审核通过/驳回是重要变更，若开启「变更时强制同步」则自动上传云端。
+    await ForceSyncHelper.maybeSync(_storage);
   }
 
   /// 某儿童在指定日期的已完成打卡记录。

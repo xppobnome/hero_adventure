@@ -1,4 +1,5 @@
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import '../../core/utils/force_sync.dart';
 import '../../data/models/child_profile.dart';
 import '../../data/models/family_profile.dart';
 import '../../data/repositories/local_storage_repo.dart';
@@ -24,6 +25,13 @@ final familyProfileProvider = StateNotifierProvider<FamilyProfileNotifier, Famil
 final deviceRoleProvider = StateProvider<String>((ref) {
   final storage = ref.watch(storageProvider);
   return storage.getDeviceRole();
+});
+
+// ====== 新增：家长菜单栏文字标签是否展示 ======
+// 默认从本地读取；切换时同步写入 storage 并更新此状态，供菜单栏即时响应。
+final showNavLabelsProvider = StateProvider<bool>((ref) {
+  final storage = ref.watch(storageProvider);
+  return storage.getShowNavLabels();
 });
 
 // ==========================================
@@ -65,8 +73,10 @@ class FamilyProfileNotifier extends StateNotifier<FamilyProfile?> {
   }
 
   /// 发放奖励经验与能量币 (审核通过后调用)。
-  Future<void> grantReward(String childId, int addedExp, int addedCoins) {
-    return updateChildExp(childId, addedExp, addedCoins);
+  Future<void> grantReward(String childId, int addedExp, int addedCoins) async {
+    await updateChildExp(childId, addedExp, addedCoins);
+    // 审核通过发放奖励是重要变更，若开启「变更时强制同步」则自动上传云端。
+    await ForceSyncHelper.maybeSync(_storage);
   }
 
   /// 扣除能量币 (兑换发放时调用)，返回是否成功。
@@ -93,6 +103,8 @@ class FamilyProfileNotifier extends StateNotifier<FamilyProfile?> {
     );
     await _storage.saveFamilyProfile(updatedProfile);
     state = updatedProfile;
+    // 兑换扣币是重要变更，若开启「变更时强制同步」则自动上传云端。
+    await ForceSyncHelper.maybeSync(_storage);
     return true;
   }
 
@@ -201,6 +213,29 @@ class FamilyProfileNotifier extends StateNotifier<FamilyProfile?> {
       children: state!.children,
     );
 
+    await _storage.saveFamilyProfile(updatedProfile);
+    state = updatedProfile;
+  }
+
+  /// 【调试】直接设置某儿童的等级 (折算经验值) 与能量币数量。
+  Future<void> debugSetChildExpAndCoins(
+    String childId, {
+    required int exp,
+    required int coins,
+  }) async {
+    if (state == null) return;
+    final updatedChildren = state!.children.map((c) {
+      if (c.id == childId) {
+        return c.copyWith(exp: exp, coins: coins);
+      }
+      return c;
+    }).toList();
+    final updatedProfile = FamilyProfile(
+      familyId: state!.familyId,
+      currentTheme: state!.currentTheme,
+      pinCode: state!.pinCode,
+      children: updatedChildren,
+    );
     await _storage.saveFamilyProfile(updatedProfile);
     state = updatedProfile;
   }
