@@ -3,9 +3,12 @@ import 'dart:io';
 
 import 'package:flutter/material.dart';
 import 'package:flutter_screenutil/flutter_screenutil.dart';
+import 'package:http/http.dart' as http;
 import 'package:package_info_plus/package_info_plus.dart';
+import 'package:path_provider/path_provider.dart';
 
 import '../../data/repositories/local_storage_repo.dart';
+import 'native_tools.dart';
 import 'url_opener.dart';
 
 /// 应用更新检查服务。
@@ -102,13 +105,24 @@ class UpdateService {
 
     if (!context.mounted) return;
     if (error != null) {
+      // 连不上网 / 状态码非 200：提示检查异常，引导去网盘手动更新。
       messenger.showSnackBar(
-        SnackBar(content: Text('检查更新失败：$error'), backgroundColor: Colors.red),
+        SnackBar(
+          content: const Text('检查更新异常，可从网盘下载里更新'),
+          backgroundColor: Colors.orange,
+          action: SnackBarAction(
+            label: '去网盘',
+            textColor: Colors.white,
+            onPressed: () => openNetdisk(context),
+          ),
+        ),
       );
       return;
     }
     if (info == null) {
-      messenger.showSnackBar(const SnackBar(content: Text('当前已是最新版本 ✓')));
+      messenger.showSnackBar(
+        const SnackBar(content: Text('当前版本已是最新版')),
+      );
       return;
     }
     await showUpdateDialog(context, storage, info);
@@ -146,7 +160,9 @@ class UpdateService {
           ],
         ),
         content: ConstrainedBox(
-          constraints: BoxConstraints(maxWidth: 400.w, maxHeight: 420.h),
+          // 固定逻辑像素约束弹窗尺寸，避免 screenutil 的 .w/.h 在平板竖屏/手机上
+          // 缩放不一致导致弹窗「细长」。高度收紧（300），公告区内容多时滚动展示。
+          constraints: const BoxConstraints(maxWidth: 360, maxHeight: 300),
           child: Column(
             mainAxisSize: MainAxisSize.min,
             crossAxisAlignment: CrossAxisAlignment.start,
@@ -172,6 +188,8 @@ class UpdateService {
           TextButton(
             onPressed: () {
               storage.setUpdatePermanentIgnored(true);
+              // 同步关闭「自动检查更新」，但保留用户可再手动开启的能力。
+              storage.setUpdateAutoCheck(false);
               Navigator.pop(ctx);
             },
             child: Text(
@@ -196,13 +214,161 @@ class UpdateService {
             onPressed: () {
               storage.setUpdateIgnoredVersion(''); // 主动更新时清除忽略标记
               Navigator.pop(ctx);
-              _launchDownload(info.downloadUrl);
+              _downloadAndInstall(context, info);
             },
             child: Text('立即更新', style: TextStyle(fontSize: 14.sp)),
           ),
         ],
       ),
     );
+  }
+
+  /// 自动下载 APK 到公共下载目录，下载完成后触发系统安装器。
+  ///
+  /// 下载过程弹一个带进度提示的对话框（不可关闭），完成后关闭并安装。
+  static Future<void> _downloadAndInstall(
+    BuildContext context,
+    UpdateInfo info,
+  ) async {
+    final messenger = ScaffoldMessenger.of(context);
+
+    // 用 ValueNotifier 驱动进度对话框刷新。
+    final progressNotifier = ValueNotifier<double>(0);
+    final statusNotifier = ValueNotifier<String>('正在连接...');
+    showDialog(
+      context: context,
+      barrierDismissible: false,
+      builder: (ctx) => AlertDialog(
+        title: const Text('正在下载更新'),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            ValueListenableBuilder<double>(
+              valueListenable: progressNotifier,
+              builder: (_, p, __) => LinearProgressIndicator(value: p),
+            ),
+            const SizedBox(height: 12),
+            ValueListenableBuilder<String>(
+              valueListenable: statusNotifier,
+              builder: (_, s, __) => Text(s, style: const TextStyle(fontSize: 13)),
+            ),
+            const SizedBox(height: 4),
+            ValueListenableBuilder<double>(
+              valueListenable: progressNotifier,
+              builder: (_, p, __) => Text(
+                '${(p * 100).toStringAsFixed(0)}%',
+                style: const TextStyle(fontSize: 15, fontWeight: FontWeight.bold),
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+
+    String? apkPath;
+    Object? error;
+    try {
+      apkPath = await _downloadApk(
+        info.downloadUrl,
+        info.version,
+        onProgress: (p, s) {
+          progressNotifier.value = p;
+          statusNotifier.value = s;
+        },
+      );
+    } catch (e) {
+      error = e;
+    }
+
+    // 关闭下载进度对话框。
+    if (context.mounted) {
+      Navigator.of(context, rootNavigator: true).pop();
+    }
+    if (!context.mounted) return;
+
+    if (error != null || apkPath == null) {
+      messenger.showSnackBar(
+        SnackBar(
+          content: Text('下载失败：$error，已为你打开浏览器下载页'),
+          backgroundColor: Colors.red,
+        ),
+      );
+      // 兜底：退回浏览器下载。
+      await _launchDownload(info.downloadUrl);
+      return;
+    }
+
+    // 触发系统安装器。
+    final installed = await NativeTools.installApk(apkPath);
+    if (!installed) {
+      messenger.showSnackBar(
+        const SnackBar(
+          content: Text('无法自动安装，请到系统设置为本应用开启「安装未知来源应用」权限后重试'),
+          backgroundColor: Colors.orange,
+        ),
+      );
+      // 引导用户去开启安装权限。
+      await NativeTools.openAppSettings();
+    }
+  }
+
+  /// 下载 APK 到公共下载目录，返回本地文件路径。
+  static Future<String> _downloadApk(
+    String url,
+    String version, {
+    required void Function(double progress, String status) onProgress,
+  }) async {
+    if (url.isEmpty) {
+      throw Exception('该版本未提供 APK 下载地址');
+    }
+
+    // 优先下载到公共下载目录（Android 的 Download/），失败则回退应用文档目录。
+    Directory? dir;
+    try {
+      dir = await getDownloadsDirectory();
+    } catch (_) {
+      dir = null;
+    }
+    dir ??= await getApplicationDocumentsDirectory();
+    if (dir == null) {
+      throw Exception('无法获取下载目录');
+    }
+
+    final file = File('${dir.path}/hero_adventure_v$version.apk');
+
+    final client = http.Client();
+    try {
+      final request = http.Request('GET', Uri.parse(url));
+      final response = await client.send(request);
+      if (response.statusCode != 200) {
+        throw Exception('下载失败 HTTP ${response.statusCode}');
+      }
+
+      final total = response.contentLength ?? 0;
+      final sink = file.openWrite();
+      var received = 0;
+      await for (final chunk in response.stream) {
+        sink.add(chunk);
+        received += chunk.length;
+        if (total > 0) {
+          onProgress(
+            received / total,
+            '正在下载 ${(received / 1024 / 1024).toStringAsFixed(1)} MB'
+                ' / ${(total / 1024 / 1024).toStringAsFixed(1)} MB',
+          );
+        } else {
+          onProgress(0, '正在下载 ${(received / 1024 / 1024).toStringAsFixed(1)} MB');
+        }
+      }
+      await sink.close();
+
+      if (!file.existsSync() || file.lengthSync() == 0) {
+        throw Exception('下载文件为空');
+      }
+      return file.path;
+    } finally {
+      client.close();
+    }
   }
 
   static Future<void> _launchDownload(String url) async {
@@ -213,11 +379,11 @@ class UpdateService {
   static Future<UpdateInfo?> _fetchLatestBySource(LocalStorageRepo storage) async {
     final source = storage.getUpdateSource();
     switch (source) {
-      case sourceGitee:
-        return _fetchGiteeRelease();
       case sourceGithub:
-      default:
         return _fetchGithubRelease();
+      case sourceGitee:
+      default:
+        return _fetchGiteeRelease();
     }
   }
 

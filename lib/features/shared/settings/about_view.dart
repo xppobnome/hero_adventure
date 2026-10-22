@@ -50,7 +50,7 @@ class _AboutViewState extends ConsumerState<AboutView> {
     await UrlOpener.open(url, context: context);
   }
 
-  /// 图标：自定义头像（若启用且有图片）→ 圆形头像；否则默认盾牌图标。
+  /// 图标：自定义头像（若启用且有图片）→ 圆形头像；否则默认应用图标 icon.png。
   Widget _buildIcon(bool useCustom, String iconPath, String appName) {
     if (useCustom && iconPath.isNotEmpty && File(iconPath).existsSync()) {
       return Container(
@@ -83,12 +83,6 @@ class _AboutViewState extends ConsumerState<AboutView> {
       width: 96.w,
       height: 96.w,
       decoration: BoxDecoration(
-        gradient: const LinearGradient(
-          begin: Alignment.topLeft,
-          end: Alignment.bottomRight,
-          colors: [Color(0xFF00A0E9), Color(0xFF0B1026)],
-        ),
-        borderRadius: BorderRadius.circular(24.r),
         boxShadow: [
           BoxShadow(
             color: Colors.black.withValues(alpha: 0.2),
@@ -96,6 +90,25 @@ class _AboutViewState extends ConsumerState<AboutView> {
             offset: const Offset(0, 6),
           ),
         ],
+      ),
+      child: ClipOval(
+        child: Image.asset(
+          'assets/icon.png',
+          fit: BoxFit.cover,
+          errorBuilder: (context, error, stack) => _fallbackShieldIcon(),
+        ),
+      ),
+    );
+  }
+
+  Widget _fallbackShieldIcon() {
+    return Container(
+      decoration: const BoxDecoration(
+        gradient: LinearGradient(
+          begin: Alignment.topLeft,
+          end: Alignment.bottomRight,
+          colors: [Color(0xFF00A0E9), Color(0xFF0B1026)],
+        ),
       ),
       child: Icon(
         Icons.shield_outlined,

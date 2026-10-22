@@ -9,7 +9,8 @@ class CheckInRecord {
   final String taskId; // 关联任务
   final String status; // 'pending' (待审核) | 'completed' (已完成) | 'rejected' (已驳回)
   final String date; // 日期索引 YYYY-MM-DD
-  final String? proofImage; // 本地图片路径 (可为空)
+  final String? proofImage; // 本地图片路径 (单张，兼容旧数据)
+  final List<String> proofImages; // 本地图片路径列表 (多张凭证)
   final int rewardCoins; // 快照奖励币 (审批通过时下发)
   final int rewardExp; // 快照奖励经验
   final DateTime createdAt; // 创建时间戳
@@ -21,19 +22,30 @@ class CheckInRecord {
     required this.status,
     required this.date,
     this.proofImage,
+    this.proofImages = const [],
     this.rewardCoins = 0,
     this.rewardExp = 0,
     required this.createdAt,
   });
 
   factory CheckInRecord.fromJson(Map<String, dynamic> json) {
+    final proofImagesRaw = json['proofImages'];
+    final List<String> images = proofImagesRaw is List
+        ? proofImagesRaw.whereType<String>().toList()
+        : const [];
+    // 兼容旧数据：只有单张 proofImage 时，将其作为列表首项。
+    final single = json['proofImage'] as String?;
+    final merged = images.isNotEmpty
+        ? images
+        : (single != null && single.isNotEmpty ? [single] : <String>[]);
     return CheckInRecord(
       id: json['id'] as String,
       childId: json['childId'] as String,
       taskId: json['taskId'] as String,
       status: json['status'] as String? ?? 'pending',
       date: json['date'] as String? ?? '',
-      proofImage: json['proofImage'] as String?,
+      proofImage: merged.isNotEmpty ? merged.first : null,
+      proofImages: merged,
       rewardCoins: json['rewardCoins'] as int? ?? 0,
       rewardExp: json['rewardExp'] as int? ?? 0,
       createdAt: DateTime.tryParse(json['createdAt'] as String? ?? '') ?? DateTime.now(),
@@ -48,6 +60,7 @@ class CheckInRecord {
       'status': status,
       'date': date,
       'proofImage': proofImage,
+      'proofImages': proofImages,
       'rewardCoins': rewardCoins,
       'rewardExp': rewardExp,
       'createdAt': createdAt.toIso8601String(),
@@ -57,6 +70,7 @@ class CheckInRecord {
   CheckInRecord copyWith({
     String? status,
     String? proofImage,
+    List<String>? proofImages,
     int? rewardCoins,
     int? rewardExp,
   }) {
@@ -67,6 +81,7 @@ class CheckInRecord {
       status: status ?? this.status,
       date: date,
       proofImage: proofImage ?? this.proofImage,
+      proofImages: proofImages ?? this.proofImages,
       rewardCoins: rewardCoins ?? this.rewardCoins,
       rewardExp: rewardExp ?? this.rewardExp,
       createdAt: createdAt,

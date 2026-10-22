@@ -69,15 +69,16 @@ class _CheckInRecordsViewState extends ConsumerState<CheckInRecordsView> {
         ],
       ),
       body: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
-          // 儿童筛选
+          // 儿童筛选（白色背景占满整行宽度）
           Container(
             color: Colors.white,
+            width: double.infinity,
             padding: EdgeInsets.symmetric(horizontal: 16.w, vertical: 8.h),
-            child: SizedBox(
-              height: 40.h,
-              child: ListView(
-                scrollDirection: Axis.horizontal,
+            child: SingleChildScrollView(
+              scrollDirection: Axis.horizontal,
+              child: Row(
                 children: [
                   _filterChip('全部', _filterChildId == null, () {
                     setState(() => _filterChildId = null);
@@ -95,19 +96,26 @@ class _CheckInRecordsViewState extends ConsumerState<CheckInRecordsView> {
               top: false,
               child: records.isEmpty
                 ? Center(child: Text('暂无打卡记录', style: TextStyle(fontSize: 15.sp, color: Colors.grey)))
-                : ListView.builder(
-                    padding: EdgeInsets.all(16.w),
-                    itemCount: records.length,
-                    itemBuilder: (context, index) {
-                      final r = records[index];
-                      return _RecordCard(
-                        record: r,
-                        childName: childNameById[r.childId] ?? '未知',
-                        taskTitle: taskTitleById[r.taskId] ?? '未知任务',
-                        avatarImage: children.firstWhere((c) => c.id == r.childId,
-                                orElse: () => children.first).avatarImage,
-                      );
-                    },
+                : Center(
+                    child: ConstrainedBox(
+                      constraints: const BoxConstraints(maxWidth: 800),
+                      child: ListView.builder(
+                        padding: EdgeInsets.all(16.w),
+                        itemCount: records.length,
+                        itemBuilder: (context, index) {
+                          final r = records[index];
+                          return _RecordCard(
+                            record: r,
+                            childName: childNameById[r.childId] ?? '未知',
+                            taskTitle: taskTitleById[r.taskId] ?? '未知任务',
+                            avatarImage: children.firstWhere(
+                                    (c) => c.id == r.childId,
+                                    orElse: () => children.first)
+                                .avatarImage,
+                          );
+                        },
+                      ),
+                    ),
                   ),
             ),
           ),
@@ -120,10 +128,16 @@ class _CheckInRecordsViewState extends ConsumerState<CheckInRecordsView> {
     return Padding(
       padding: EdgeInsets.only(right: 8.w),
       child: ChoiceChip(
-        label: Text(label, style: TextStyle(fontSize: 13.sp)),
+        label: Text(
+          label,
+          style: TextStyle(fontSize: 13.sp),
+          overflow: TextOverflow.ellipsis,
+          maxLines: 1,
+        ),
         selected: selected,
         onSelected: (_) => onTap(),
         selectedColor: UltramanTheme.blue.withValues(alpha: 0.2),
+        visualDensity: VisualDensity.compact,
       ),
     );
   }
@@ -242,21 +256,52 @@ class _RecordCard extends StatelessWidget {
 
     return Card(
       margin: EdgeInsets.only(bottom: 10.h),
-      child: ListTile(
-        leading: ChildAvatar(avatarImage: avatarImage, name: childName, size: 44.w),
-        title: Text(taskTitle, style: TextStyle(fontSize: 15.sp, fontWeight: FontWeight.w600)),
-        subtitle: Text(
-          '$childName · ${record.date}\n+${record.rewardCoins}币 / +${record.rewardExp}EXP',
-          style: TextStyle(fontSize: 12.sp, color: Colors.grey.shade600),
-        ),
-        isThreeLine: true,
-        trailing: Column(
-          mainAxisAlignment: MainAxisAlignment.center,
-          crossAxisAlignment: CrossAxisAlignment.end,
+      child: Padding(
+        padding: EdgeInsets.all(12.w),
+        child: Row(
+          crossAxisAlignment: CrossAxisAlignment.center,
           children: [
-            Icon(icon, color: color, size: 20.w),
-            SizedBox(height: 4.h),
-            Text(label, style: TextStyle(fontSize: 11.sp, color: color)),
+            ChildAvatar(avatarImage: avatarImage, name: childName, size: 44.w),
+            SizedBox(width: 12.w),
+            // 中间文字区：标题 + 副标题，用 Flexible 自适应避免溢出
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    taskTitle,
+                    style: TextStyle(fontSize: 15.sp, fontWeight: FontWeight.w600),
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                  ),
+                  SizedBox(height: 4.h),
+                  Text(
+                    '$childName · ${record.date}',
+                    style: TextStyle(fontSize: 12.sp, color: Colors.grey.shade600),
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                  ),
+                  SizedBox(height: 2.h),
+                  Text(
+                    '+${record.rewardCoins}币 / +${record.rewardExp}EXP',
+                    style: TextStyle(fontSize: 12.sp, color: Colors.grey.shade600),
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                  ),
+                ],
+              ),
+            ),
+            SizedBox(width: 12.w),
+            // 右侧状态图标 + 文字
+            Column(
+              mainAxisAlignment: MainAxisAlignment.center,
+              crossAxisAlignment: CrossAxisAlignment.end,
+              children: [
+                Icon(icon, color: color, size: 20.w),
+                SizedBox(height: 4.h),
+                Text(label, style: TextStyle(fontSize: 11.sp, color: color)),
+              ],
+            ),
           ],
         ),
       ),

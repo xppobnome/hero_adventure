@@ -155,8 +155,8 @@ class _SplashGateState extends State<SplashGate> {
   @override
   void initState() {
     super.initState();
-    // 开屏停留约 1.8 秒后进入主界面（与 SplashScreen 动画时长对齐）。
-    Future.delayed(const Duration(milliseconds: 1800), () {
+    // 开屏停留约 2.4 秒后进入主界面（配合启动音效与华丽特效动画时长）。
+    Future.delayed(const Duration(milliseconds: 2400), () {
       if (mounted) setState(() => _showSplash = false);
     });
   }
@@ -258,6 +258,8 @@ class InitialRouteWrapper extends ConsumerStatefulWidget {
   Widget build(BuildContext context) {
     final familyProfile = ref.watch(familyProfileProvider);
     final deviceRole = ref.watch(deviceRoleProvider);
+
+    debugPrint('[路由] InitialRouteWrapper build: deviceRole=$deviceRole, hasFamily=${familyProfile != null}');
 
     // 1. 无数据，进入初始化
     if (familyProfile == null) return const FamilySetupView();

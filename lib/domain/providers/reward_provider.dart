@@ -32,6 +32,17 @@ class RewardNotifier extends StateNotifier<List<RewardItem>> {
     _storage.saveRewards(state);
   }
 
+  // 更新奖励项
+  void updateReward(RewardItem updatedReward) {
+    state = state.map((reward) {
+      if (reward.id == updatedReward.id) {
+        return updatedReward;
+      }
+      return reward;
+    }).toList();
+    _storage.saveRewards(state);
+  }
+
   // 删除奖励项
   void removeReward(String id) {
     state = state.where((reward) => reward.id != id).toList();

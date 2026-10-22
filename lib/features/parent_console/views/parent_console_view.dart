@@ -11,6 +11,7 @@ import 'tabs/child_progress_tab.dart';
 import 'tabs/settings_tab.dart';
 import 'child_profile_management_view.dart';
 import 'check_in_records_view.dart';
+import 'approval_history_view.dart';
 
 class ParentConsoleView extends ConsumerStatefulWidget {
   const ParentConsoleView({super.key});
@@ -50,15 +51,46 @@ class _ParentConsoleViewState extends ConsumerState<ParentConsoleView> {
         title: Text('宇宙警备队总部', style: TextStyle(fontSize: 20.sp)),
         backgroundColor: Colors.grey.shade900,
         actions: [
-          IconButton(
+          // 历史记录入口（打卡记录 / 审批记录）用 PopupMenu 收纳，避免图标过多。
+          PopupMenuButton<String>(
             icon: Icon(Icons.history, size: 22.r),
-            tooltip: '打卡记录',
-            onPressed: () {
-              Navigator.push(
-                context,
-                MaterialPageRoute(builder: (_) => const CheckInRecordsView()),
-              );
+            tooltip: '记录中心',
+            color: Colors.white,
+            onSelected: (v) {
+              if (v == 'checkin') {
+                Navigator.push(
+                  context,
+                  MaterialPageRoute(builder: (_) => const CheckInRecordsView()),
+                );
+              } else if (v == 'approval') {
+                Navigator.push(
+                  context,
+                  MaterialPageRoute(builder: (_) => const ApprovalHistoryView()),
+                );
+              }
             },
+            itemBuilder: (context) => [
+              PopupMenuItem(
+                value: 'checkin',
+                child: Row(
+                  children: [
+                    Icon(Icons.event_note, color: UltramanTheme.blue, size: 20.r),
+                    SizedBox(width: 10.w),
+                    Text('打卡记录', style: TextStyle(fontSize: 14.sp)),
+                  ],
+                ),
+              ),
+              PopupMenuItem(
+                value: 'approval',
+                child: Row(
+                  children: [
+                    Icon(Icons.fact_check_outlined, color: UltramanTheme.gold, size: 20.r),
+                    SizedBox(width: 10.w),
+                    Text('审批记录', style: TextStyle(fontSize: 14.sp)),
+                  ],
+                ),
+              ),
+            ],
           ),
           IconButton(
             icon: Icon(Icons.badge_outlined, size: 22.r),

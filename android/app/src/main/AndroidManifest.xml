@@ -5,6 +5,13 @@
     <uses-permission android:name="android.permission.ACCESS_WIFI_STATE"/>
     <!-- 旧式桌面快捷方式（Android 8.0 以下）需要 -->
     <uses-permission android:name="com.android.launcher.permission.INSTALL_SHORTCUT"/>
+    <!-- 自动更新：安装下载的 APK（Android 8.0+ 还需用户在设置中开启「安装未知来源应用」） -->
+    <uses-permission android:name="android.permission.REQUEST_INSTALL_PACKAGES"/>
+    <!-- 下载更新 APK 到公共下载目录（Android 10+ 分区存储下写公共目录） -->
+    <uses-permission android:name="android.permission.WRITE_EXTERNAL_STORAGE"
+        android:maxSdkVersion="28"/>
+    <uses-permission android:name="android.permission.READ_EXTERNAL_STORAGE"
+        android:maxSdkVersion="32"/>
     <application
         android:label="儿童英雄闯关冒险"
         android:name="${applicationName}"

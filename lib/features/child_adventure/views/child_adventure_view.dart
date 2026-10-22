@@ -1,3 +1,4 @@
+import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:image_picker/image_picker.dart';
@@ -109,12 +110,14 @@ class _ChildAdventureViewState extends ConsumerState<ChildAdventureView> {
     await _showHeroShowcase(hero);
 
     String? proofImage;
+    List<String> proofImages = const [];
     if (task.requirePhoto) {
-      proofImage = await _pickPhoto();
-      if (proofImage == null) {
+      proofImages = await _pickPhotos();
+      if (proofImages.isEmpty) {
         if (mounted) setState(() => _isPlayingAnimation = false);
         return;
       }
+      proofImage = proofImages.first;
     }
 
     await ref
@@ -126,6 +129,7 @@ class _ChildAdventureViewState extends ConsumerState<ChildAdventureView> {
           rewardCoins: task.rewardCoins,
           rewardExp: task.rewardExp,
           proofImage: proofImage,
+          proofImages: proofImages,
         );
 
     if (!task.requirePhoto) {
@@ -214,6 +218,26 @@ class _ChildAdventureViewState extends ConsumerState<ChildAdventureView> {
     return ImageCompressor.persistPickedImage(picked.path);
   }
 
+  /// 多张照片打卡流程：底部弹窗展示已拍照片，可继续拍照、删除单张，
+  /// 点「提交打卡」返回照片列表。取消则返回空列表。
+  Future<List<String>> _pickPhotos() async {
+    final List<String> images = [];
+    // 先拍第一张，拍不到则视为取消。
+    final first = await _pickPhoto();
+    if (first == null) return images;
+    images.add(first);
+
+    // 底部弹窗：展示已拍照片，可继续拍、删除、提交。
+    final result = await showModalBottomSheet<List<String>>(
+      context: context,
+      isScrollControlled: true,
+      backgroundColor: Colors.transparent,
+      builder: (ctx) => _MultiPhotoSheet(initialImages: images),
+    );
+
+    return result ?? const [];
+  }
+
   Future<void> _showUnlockDeviceDialog() async {
     debugPrint('[PIN解除] 打开解除绑定对话框，deviceRole=${ref.read(deviceRoleProvider)}, childId=${widget.childId}');
     final unlocked = await showDialog<bool>(
@@ -242,14 +266,24 @@ class _ChildAdventureViewState extends ConsumerState<ChildAdventureView> {
     debugPrint('[PIN解除] showDialog 返回 unlocked=$unlocked, mounted=$mounted');
     if (unlocked != true || !mounted) return;
 
-    // 对话框已关闭，现在更新设备角色为 unbound 并持久化。
+    debugPrint('[PIN解除] 更新前 deviceRole=${ref.read(deviceRoleProvider)}');
+
+    // 先取得 root navigator 引用，避免下面 deviceRole 变化触发 home 重建、
+    // 本 State 被 dispose 后 context 失效，导致 popUntil 无法执行。
+    final navigator = Navigator.of(context, rootNavigator: true);
+    debugPrint('[PIN解除] 已取得 rootNavigator');
+
+    // 更新设备角色为 unbound 并持久化（await 确保持久化完成，避免竞态）。
     ref.read(deviceRoleProvider.notifier).state = 'unbound';
-    ref.read(storageProvider).saveDeviceRole('unbound');
-    debugPrint('[PIN解除] 已置 deviceRole=unbound');
+    await ref.read(storageProvider).saveDeviceRole('unbound');
+    debugPrint('[PIN解除] 更新后 deviceRole=${ref.read(deviceRoleProvider)}');
+
+    if (!mounted) {
+      debugPrint('[PIN解除] 更新后 mounted=false，提前返回（可能已被 home 重建 dispose）');
+      return;
+    }
 
     // 用 root navigator 弹回根（home = InitialRouteWrapper）。
-    // deviceRole 已变 unbound，home 会重建为「终端身份识别」界面。
-    final navigator = Navigator.of(context, rootNavigator: true);
     debugPrint('[PIN解除] popUntil 前 canPop=${navigator.canPop()}');
     navigator.popUntil((route) => route.isFirst);
     debugPrint('[PIN解除] popUntil 完成');
@@ -263,7 +297,17 @@ class _ChildAdventureViewState extends ConsumerState<ChildAdventureView> {
 
     if (child == null) return const Scaffold(body: Center(child: Text('数据异常')));
 
-    return Scaffold(
+    return PopScope(
+      // 在关卡地图界面时，系统返回键拦截为「返回任务列表」；
+      // 在任务列表界面时允许正常返回 (交给上层路由处理)。
+      canPop: _selectedTask == null,
+      onPopInvokedWithResult: (didPop, result) {
+        if (didPop) return;
+        if (_selectedTask != null) {
+          setState(() => _selectedTask = null);
+        }
+      },
+      child: Scaffold(
       appBar: AppBar(
         title: Text(
           _selectedTask == null
@@ -359,6 +403,7 @@ class _ChildAdventureViewState extends ConsumerState<ChildAdventureView> {
             ),
         ],
       ),
+      ),
     );
   }
 
@@ -383,15 +428,17 @@ class _ChildAdventureViewState extends ConsumerState<ChildAdventureView> {
             final task = tasks[index];
             final status = _nodeStatus(task);
             final isCheckinWeek = task.type == 'checkin_week';
-            final weekProgress = isCheckinWeek
-                ? CheckInLogic.checkinWeekProgress(
+            final isCheckinMonth = task.type == 'checkin_month';
+            final isCheckinStreak = isCheckinWeek || isCheckinMonth;
+            final weekProgress = isCheckinStreak
+                ? CheckInLogic.checkinProgress(
                     task: task,
                     childId: widget.childId,
                     records: ref.read(checkInProvider),
                   )
                 : null;
 
-            return _buildTaskCard(task, status, isCheckinWeek, weekProgress);
+            return _buildTaskCard(task, status, isCheckinStreak, weekProgress);
           },
         ),
       ),
@@ -402,7 +449,7 @@ class _ChildAdventureViewState extends ConsumerState<ChildAdventureView> {
   Widget _buildTaskCard(
     Task task,
     String status,
-    bool isCheckinWeek,
+    bool isCheckinStreak,
     String? weekProgress,
   ) {
     return Container(
@@ -451,19 +498,51 @@ class _ChildAdventureViewState extends ConsumerState<ChildAdventureView> {
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  Text(
-                    task.title,
-                    style: const TextStyle(
-                      fontWeight: FontWeight.bold,
-                      fontSize: 16,
-                    ),
+                  Row(
+                    children: [
+                      Flexible(
+                        child: Text(
+                          task.title,
+                          style: const TextStyle(
+                            fontWeight: FontWeight.bold,
+                            fontSize: 16,
+                          ),
+                          overflow: TextOverflow.ellipsis,
+                        ),
+                      ),
+                      if (task.requirePhoto) ...[
+                        const SizedBox(width: 6),
+                        Container(
+                          padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                          decoration: BoxDecoration(
+                            color: Colors.orange.withValues(alpha: 0.15),
+                            borderRadius: BorderRadius.circular(4),
+                          ),
+                          child: const Row(
+                            mainAxisSize: MainAxisSize.min,
+                            children: [
+                              Icon(Icons.photo_camera, size: 12, color: Colors.orange),
+                              SizedBox(width: 2),
+                              Text(
+                                '需拍照',
+                                style: TextStyle(
+                                  fontSize: 11,
+                                  color: Colors.orange,
+                                  fontWeight: FontWeight.w600,
+                                ),
+                              ),
+                            ],
+                          ),
+                        ),
+                      ],
+                    ],
                   ),
                   const SizedBox(height: 4),
                   Text(
                     '奖励: ${task.rewardCoins}币 / ${task.rewardExp}EXP · ${task.cycleDescription}',
                     style: TextStyle(fontSize: 12, color: Colors.grey.shade600),
                   ),
-                  if (isCheckinWeek) ...[
+                  if (isCheckinStreak) ...[
                     const SizedBox(height: 4),
                     Text(
                       '连续打卡进度: $weekProgress',
@@ -611,20 +690,181 @@ class _ChildAdventureViewState extends ConsumerState<ChildAdventureView> {
           onPressed: () => _handleCheckIn(task),
           style: ElevatedButton.styleFrom(
             backgroundColor: UltramanTheme.blue,
-            padding: const EdgeInsets.symmetric(vertical: 14),
+            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
             shape: RoundedRectangleBorder(
               borderRadius: BorderRadius.circular(30),
             ),
           ),
-          child: const Text(
-            '光线攻击',
-            style: TextStyle(
-              color: Colors.white,
-              fontSize: 17,
-              fontWeight: FontWeight.bold,
-            ),
+          child: const Row(
+            mainAxisAlignment: MainAxisAlignment.center,
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Icon(Icons.flash_on, color: Colors.white, size: 24),
+              SizedBox(width: 8),
+              Text(
+                '光线攻击',
+                style: TextStyle(
+                  color: Colors.white,
+                  fontSize: 16,
+                  fontWeight: FontWeight.bold,
+                ),
+              ),
+            ],
           ),
         );
     }
+  }
+}
+
+/// 多张照片打卡编辑底部弹窗。
+///
+/// 展示已拍照片缩略图，支持「继续拍照」追加、单张删除，点「提交打卡」
+/// 返回照片列表；点「取消」返回 null（丢弃本次拍照）。
+class _MultiPhotoSheet extends StatefulWidget {
+  final List<String> initialImages;
+  const _MultiPhotoSheet({required this.initialImages});
+
+  @override
+  State<_MultiPhotoSheet> createState() => _MultiPhotoSheetState();
+}
+
+class _MultiPhotoSheetState extends State<_MultiPhotoSheet> {
+  late final List<String> _images;
+
+  @override
+  void initState() {
+    super.initState();
+    _images = List.of(widget.initialImages);
+  }
+
+  Future<void> _addPhoto() async {
+    final picker = ImagePicker();
+    final picked = await picker.pickImage(source: ImageSource.camera);
+    if (picked == null) return;
+    final path = await ImageCompressor.persistPickedImage(picked.path);
+    if (mounted) setState(() => _images.add(path));
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      decoration: const BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
+      ),
+      padding: EdgeInsets.fromLTRB(16, 16, 16, MediaQuery.of(context).padding.bottom + 16),
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          Row(
+            children: [
+              const Expanded(
+                child: Text(
+                  '打卡凭证照片',
+                  style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
+                ),
+              ),
+              Text(
+                '已拍 ${_images.length} 张',
+                style: TextStyle(fontSize: 14, color: Colors.grey.shade600),
+              ),
+            ],
+          ),
+          const SizedBox(height: 8),
+          Text(
+            '可拍摄多张照片作为打卡凭证，点击照片右上角可删除',
+            style: TextStyle(fontSize: 12, color: Colors.grey.shade500),
+          ),
+          const SizedBox(height: 16),
+          if (_images.isEmpty)
+            Padding(
+              padding: const EdgeInsets.symmetric(vertical: 24),
+              child: Center(
+                child: Text('还没有照片，点击下方「继续拍照」', style: TextStyle(color: Colors.grey.shade500, fontSize: 14)),
+              ),
+            )
+          else
+            ConstrainedBox(
+              constraints: const BoxConstraints(maxHeight: 320),
+              child: GridView.builder(
+                shrinkWrap: true,
+                gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
+                  crossAxisCount: 3,
+                  crossAxisSpacing: 8,
+                  mainAxisSpacing: 8,
+                  childAspectRatio: 1.0,
+                ),
+                itemCount: _images.length,
+                itemBuilder: (context, index) {
+                  final path = _images[index];
+                  return Stack(
+                    fit: StackFit.expand,
+                    children: [
+                      ClipRRect(
+                        borderRadius: BorderRadius.circular(8),
+                        child: Image.file(
+                          File(path),
+                          fit: BoxFit.cover,
+                        ),
+                      ),
+                      Positioned(
+                        top: 4,
+                        right: 4,
+                        child: InkWell(
+                          onTap: () => setState(() => _images.removeAt(index)),
+                          child: Container(
+                            padding: const EdgeInsets.all(3),
+                            decoration: const BoxDecoration(
+                              color: Colors.black54,
+                              shape: BoxShape.circle,
+                            ),
+                            child: const Icon(Icons.close, color: Colors.white, size: 16),
+                          ),
+                        ),
+                      ),
+                    ],
+                  );
+                },
+              ),
+            ),
+          const SizedBox(height: 16),
+          Row(
+            children: [
+              Expanded(
+                child: OutlinedButton.icon(
+                  onPressed: _addPhoto,
+                  icon: const Icon(Icons.add_a_photo, size: 20),
+                  label: const Text('继续拍照'),
+                  style: OutlinedButton.styleFrom(
+                    padding: const EdgeInsets.symmetric(vertical: 14),
+                    foregroundColor: UltramanTheme.blue,
+                    side: const BorderSide(color: UltramanTheme.blue),
+                  ),
+                ),
+              ),
+              const SizedBox(width: 12),
+              Expanded(
+                child: ElevatedButton.icon(
+                  onPressed: _images.isEmpty
+                      ? null
+                      : () => Navigator.of(context).pop(List.of(_images)),
+                  icon: const Icon(Icons.check, size: 20),
+                  label: const Text('提交打卡'),
+                  style: ElevatedButton.styleFrom(
+                    backgroundColor: Colors.green,
+                    padding: const EdgeInsets.symmetric(vertical: 14),
+                  ),
+                ),
+              ),
+            ],
+          ),
+          TextButton(
+            onPressed: () => Navigator.of(context).pop(),
+            child: const Text('取消'),
+          ),
+        ],
+      ),
+    );
   }
 }

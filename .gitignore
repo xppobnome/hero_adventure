@@ -11,7 +11,8 @@
 .svn/
 .swiftpm/
 migrate_working_dir/
-
+lib/res/assets_res.dart
+英雄闯关打卡.md
 # IntelliJ related
 *.iml
 *.ipr

@@ -113,6 +113,41 @@ class LocalStorageRepo {
     return [];
   }
 
+  // ===== 调试模式快照 (一键复原用) =====
+  // 进入调试模式时保存一份「进入前」的家庭档案快照，供「一键复原」恢复。
+  static const String keyDebugSnapshot = 'debug_snapshot';
+  static const String keyDebugSnapshotDeviceRole = 'debug_snapshot_device_role';
+
+  /// 保存调试快照 (进入调试模式时调用)。返回是否已存在旧快照。
+  /// 若已有快照则跳过，避免覆盖「第一次进入」时保存的原始状态。
+  Future<void> saveDebugSnapshot(FamilyProfile profile, String deviceRole) async {
+    if (_box.get(keyDebugSnapshot) != null) return;
+    await _box.put(keyDebugSnapshot, jsonEncode(profile.toJson()));
+    await _box.put(keyDebugSnapshotDeviceRole, deviceRole);
+  }
+
+  /// 读取调试快照，无则返回 null。
+  FamilyProfile? getDebugSnapshot() {
+    final data = _box.get(keyDebugSnapshot);
+    if (data == null) return null;
+    return FamilyProfile.fromJson(
+      Map<String, dynamic>.from(jsonDecode(data)),
+    );
+  }
+
+  /// 读取调试快照保存时的设备角色。
+  String getDebugSnapshotDeviceRole() =>
+      _box.get(keyDebugSnapshotDeviceRole) as String? ?? 'unbound';
+
+  /// 清除调试快照 (复原完成后调用)。
+  Future<void> clearDebugSnapshot() async {
+    await _box.delete(keyDebugSnapshot);
+    await _box.delete(keyDebugSnapshotDeviceRole);
+  }
+
+  /// 是否存在调试快照 (用于判断「一键复原」按钮是否可用)。
+  bool hasDebugSnapshot() => _box.get(keyDebugSnapshot) != null;
+
   // ===== 设备绑定存取 =====
   static const String keyDeviceRole = 'device_role';
 
@@ -179,9 +214,9 @@ class LocalStorageRepo {
   Future<void> setUpdatePermanentIgnored(bool value) =>
       _box.put(keyUpdatePermanentIgnored, value);
 
-  /// 更新源：'github'（默认）/ 'gitee'。
+  /// 更新源：'gitee'（默认，国内网络）/ 'github'。
   String getUpdateSource() =>
-      _box.get(keyUpdateSource) as String? ?? 'github';
+      _box.get(keyUpdateSource) as String? ?? 'gitee';
 
   Future<void> setUpdateSource(String source) =>
       _box.put(keyUpdateSource, source);
@@ -301,8 +336,9 @@ class LocalStorageRepo {
       if (c.avatarImage.isNotEmpty) imagePaths.add(c.avatarImage);
     }
     for (final c in checkIns) {
-      final p = c.proofImage;
-      if (p != null && p.isNotEmpty) imagePaths.add(p);
+      for (final p in c.proofImages) {
+        if (p.isNotEmpty) imagePaths.add(p);
+      }
     }
 
     // 去重后压缩成 base64，key 用原路径。
@@ -397,12 +433,17 @@ class LocalStorageRepo {
       final records = (snapshot['checkIns'] as List)
           .map((e) => CheckInRecord.fromJson(Map<String, dynamic>.from(e)))
           .toList();
-      // 更新打卡凭证图片路径。
+      // 更新打卡凭证图片路径（支持多张）。
       final restored = imageMap.isNotEmpty
           ? records.map((r) {
-              final old = r.proofImage;
-              final newPath = old == null ? null : imageMap[old];
-              return newPath == null ? r : r.copyWith(proofImage: newPath);
+              final mapped = r.proofImages
+                  .map((p) => imageMap[p] ?? p)
+                  .where((p) => p.isNotEmpty)
+                  .toList();
+              return r.copyWith(
+                proofImage: mapped.isNotEmpty ? mapped.first : null,
+                proofImages: mapped,
+              );
             }).toList()
           : records;
       await saveCheckIns(restored);

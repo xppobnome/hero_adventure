@@ -23,6 +23,7 @@ class CheckInNotifier extends StateNotifier<List<CheckInRecord>> {
 
   /// 新增一条打卡记录。
   /// [requirePhoto] 为 true 时进入 pending 待审核，否则直接 completed。
+  /// [proofImages] 多张凭证图片路径（可空列表）。
   Future<void> addCheckIn({
     required String childId,
     required String taskId,
@@ -30,14 +31,17 @@ class CheckInNotifier extends StateNotifier<List<CheckInRecord>> {
     required int rewardCoins,
     required int rewardExp,
     String? proofImage,
+    List<String> proofImages = const [],
   }) async {
+    final images = proofImages.where((p) => p.isNotEmpty).toList();
     final record = CheckInRecord(
       id: const Uuid().v4(),
       childId: childId,
       taskId: taskId,
       status: requirePhoto ? 'pending' : 'completed',
       date: _today(),
-      proofImage: proofImage,
+      proofImage: proofImage ?? (images.isNotEmpty ? images.first : null),
+      proofImages: images,
       rewardCoins: rewardCoins,
       rewardExp: rewardExp,
       createdAt: DateTime.now(),

@@ -5,4 +5,7 @@
     <files-path name="internal_files" path="." />
     <cache-path name="cache" path="." />
     <external-files-path name="external_app_files" path="." />
+    <!-- 自动更新：APK 下载到公共下载目录（Download/），安装时需通过 FileProvider 暴露 -->
+    <external-path name="external_downloads" path="Download/" />
+    <external-files-path name="external_files_download" path="Download/" />
 </paths>

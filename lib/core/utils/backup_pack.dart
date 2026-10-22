@@ -161,9 +161,17 @@ class BackupPack {
     final checkIns = snapshot['checkIns'];
     if (checkIns is List) {
       for (final c in checkIns) {
-        if (c is Map && c['proofImage'] is String) {
-          final p = c['proofImage'] as String;
-          if (p.isNotEmpty) paths.add(p);
+        if (c is Map) {
+          // 优先收集多张 proofImages，兼容旧的单张 proofImage。
+          final images = c['proofImages'];
+          if (images is List) {
+            for (final p in images.whereType<String>()) {
+              if (p.isNotEmpty) paths.add(p);
+            }
+          } else if (c['proofImage'] is String) {
+            final p = c['proofImage'] as String;
+            if (p.isNotEmpty) paths.add(p);
+          }
         }
       }
     }
@@ -240,10 +248,22 @@ class BackupPack {
     final checkIns = data['checkIns'];
     if (checkIns is List) {
       for (final c in checkIns) {
-        if (c is Map && c['proofImage'] is String) {
-          final old = c['proofImage'] as String;
-          final newPath = newPathByOriginal[old];
-          if (newPath != null) c['proofImage'] = newPath;
+        if (c is Map) {
+          // 重写多张 proofImages；同时兼容单张 proofImage。
+          final images = c['proofImages'];
+          if (images is List) {
+            final rewritten = images.whereType<String>().map((p) {
+              return newPathByOriginal[p] ?? p;
+            }).toList();
+            c['proofImages'] = rewritten;
+            if (rewritten.isNotEmpty) {
+              c['proofImage'] = rewritten.first;
+            }
+          } else if (c['proofImage'] is String) {
+            final old = c['proofImage'] as String;
+            final newPath = newPathByOriginal[old];
+            if (newPath != null) c['proofImage'] = newPath;
+          }
         }
       }
     }

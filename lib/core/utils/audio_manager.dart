@@ -101,6 +101,11 @@ class AudioManager {
     await _playAsset('assets/audio/beam_attack.mp3');
   }
 
+  // 启动音效 (开屏启动页播放)
+  Future<void> playStartup() async {
+    await _playAsset('assets/audio/启动音效.mp3');
+  }
+
   // 胜利/升级音效
   Future<void> playVictory() async {
     await _playAsset('assets/audio/victory.mp3');

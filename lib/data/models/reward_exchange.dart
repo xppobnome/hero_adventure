@@ -8,7 +8,8 @@ class RewardExchange {
   final String rewardId; // 关联商城奖励项
   final String rewardTitle; // 冗余奖励名称，便于展示
   final int costCoins; // 快照消耗币数
-  final String status; // 'requested' (申请中) | 'approved' (已发放) | 'rejected' (已驳回)
+  final String status; // 'requested' (申请中) | 'approved' (已发放) | 'rejected' (已驳回) | 'completed' (免审核直接完成)
+  final bool requireApproval; // 是否需家长审核
   final DateTime createdAt;
 
   RewardExchange({
@@ -19,6 +20,7 @@ class RewardExchange {
     required this.costCoins,
     required this.status,
     required this.createdAt,
+    this.requireApproval = true,
   });
 
   factory RewardExchange.fromJson(Map<String, dynamic> json) {
@@ -29,6 +31,7 @@ class RewardExchange {
       rewardTitle: json['rewardTitle'] as String? ?? '',
       costCoins: json['costCoins'] as int? ?? 0,
       status: json['status'] as String? ?? 'requested',
+      requireApproval: json['requireApproval'] as bool? ?? true,
       createdAt: DateTime.tryParse(json['createdAt'] as String? ?? '') ?? DateTime.now(),
     );
   }
@@ -41,6 +44,7 @@ class RewardExchange {
       'rewardTitle': rewardTitle,
       'costCoins': costCoins,
       'status': status,
+      'requireApproval': requireApproval,
       'createdAt': createdAt.toIso8601String(),
     };
   }
@@ -53,6 +57,7 @@ class RewardExchange {
       rewardTitle: rewardTitle,
       costCoins: costCoins,
       status: status ?? this.status,
+      requireApproval: requireApproval,
       createdAt: createdAt,
     );
   }

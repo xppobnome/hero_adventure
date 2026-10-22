@@ -3,6 +3,7 @@ import '../../core/utils/force_sync.dart';
 import '../../data/models/child_profile.dart';
 import '../../data/models/family_profile.dart';
 import '../../data/repositories/local_storage_repo.dart';
+import '../hero_system.dart' show expForLevel, maxLevel;
 
 // ==========================================
 // 1. 所有的 Providers 都放在全局最顶层 (类的外部)
@@ -106,6 +107,27 @@ class FamilyProfileNotifier extends StateNotifier<FamilyProfile?> {
     // 兑换扣币是重要变更，若开启「变更时强制同步」则自动上传云端。
     await ForceSyncHelper.maybeSync(_storage);
     return true;
+  }
+
+  /// 退回能量币 (兑换被驳回时调用)。
+  Future<void> refundCoins(String childId, int refundCoins) async {
+    if (state == null) return;
+    final updatedChildren = state!.children.map((c) {
+      if (c.id == childId) {
+        return c.copyWith(coins: c.coins + refundCoins);
+      }
+      return c;
+    }).toList();
+    final updatedProfile = FamilyProfile(
+      familyId: state!.familyId,
+      currentTheme: state!.currentTheme,
+      pinCode: state!.pinCode,
+      children: updatedChildren,
+    );
+    await _storage.saveFamilyProfile(updatedProfile);
+    state = updatedProfile;
+    // 退回能量币是重要变更，若开启「变更时强制同步」则自动上传云端。
+    await ForceSyncHelper.maybeSync(_storage);
   }
 
   /// 新增儿童档案 (一户多宝)。
@@ -238,5 +260,38 @@ class FamilyProfileNotifier extends StateNotifier<FamilyProfile?> {
     );
     await _storage.saveFamilyProfile(updatedProfile);
     state = updatedProfile;
+  }
+
+  /// 【调试】解锁全部英雄：把儿童等级设为满级，使其达到所有英雄解锁等级。
+  Future<void> debugUnlockAllHeroes(String childId) async {
+    if (state == null) return;
+    // 满级经验值 = 达到 maxLevel 所需累计经验。
+    int maxExp = 0;
+    for (int l = 2; l <= maxLevel; l++) {
+      maxExp += expForLevel(l);
+    }
+    final updatedChildren = state!.children.map((c) {
+      if (c.id == childId) {
+        return c.copyWith(exp: maxExp);
+      }
+      return c;
+    }).toList();
+    final updatedProfile = FamilyProfile(
+      familyId: state!.familyId,
+      currentTheme: state!.currentTheme,
+      pinCode: state!.pinCode,
+      children: updatedChildren,
+    );
+    await _storage.saveFamilyProfile(updatedProfile);
+    state = updatedProfile;
+  }
+
+  /// 【调试】一键复原：从快照恢复整个家庭档案，并清空快照。
+  Future<void> debugRestoreFromSnapshot() async {
+    final snapshot = _storage.getDebugSnapshot();
+    if (snapshot == null) return;
+    await _storage.saveFamilyProfile(snapshot);
+    state = snapshot;
+    await _storage.clearDebugSnapshot();
   }
 }

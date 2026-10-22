@@ -3,6 +3,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_screenutil/flutter_screenutil.dart';
 import '../../../core/utils/responsive_layout.dart';
 import '../../../core/widgets/child_avatar.dart';
+import '../../../domain/hero_system.dart' show levelFromExp;
 import '../../../domain/providers/family_provider.dart';
 import '../../child_adventure/views/child_adventure_view.dart';
 import '../../sync/views/sync_dashboard_view.dart';
@@ -91,7 +92,7 @@ class RoleSelectionView extends ConsumerWidget {
                           SizedBox(height: 12.h),
                           Text(child.name, style: TextStyle(fontSize: 18.sp, fontWeight: FontWeight.bold)),
                           SizedBox(height: 4.h),
-                          Text('LV. ${child.exp ~/ 100 + 1}', style: TextStyle(fontSize: 14.sp, color: Colors.grey.shade700)),
+                          Text('LV. ${levelFromExp(child.exp)}', style: TextStyle(fontSize: 14.sp, color: Colors.grey.shade700)),
                         ],
                       ),
                     ),

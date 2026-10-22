@@ -311,11 +311,14 @@ class SettingsTab extends ConsumerWidget {
           ),
           ElevatedButton(
             onPressed: () {
-              // 解除绑定 + 立即返回：同时改运行时状态，根级 InitialRouteWrapper
-              // watch 到 'unbound' 自动重建为终端身份识别界面。
+              // 解除绑定 + 立即返回：改运行时状态 + 持久化。
               ref.read(deviceRoleProvider.notifier).state = 'unbound';
               ref.read(storageProvider).saveDeviceRole('unbound');
+              // 先关闭对话框，再弹回根路由 (InitialRouteWrapper)，
+              // 使 home 依据 deviceRole='unbound' 重建为终端身份识别界面。
               Navigator.pop(ctx);
+              Navigator.of(context, rootNavigator: true)
+                  .popUntil((route) => route.isFirst);
             },
             style: ElevatedButton.styleFrom(backgroundColor: Colors.orange),
             child: const Text(

@@ -66,7 +66,10 @@ class ApprovalTab extends ConsumerWidget {
     if (records.isEmpty) {
       return const Center(child: Text('暂无待审核凭证', style: TextStyle(color: Colors.grey)));
     }
-    return ListView.builder(
+    return Center(
+      child: ConstrainedBox(
+        constraints: const BoxConstraints(maxWidth: 800),
+        child: ListView.builder(
       padding: EdgeInsets.all(16.w),
       itemCount: records.length,
       itemBuilder: (context, index) {
@@ -76,6 +79,11 @@ class ApprovalTab extends ConsumerWidget {
         final child = _childName(ref, record.childId);
         return Card(
           margin: EdgeInsets.only(bottom: 12.h),
+          elevation: 0,
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(14.r),
+            side: BorderSide(color: Colors.grey.shade200),
+          ),
           child: Padding(
             padding: EdgeInsets.all(12.w),
             child: Column(
@@ -93,16 +101,8 @@ class ApprovalTab extends ConsumerWidget {
                   ],
                 ),
                 SizedBox(height: 8.h),
-                if (record.proofImage != null && File(record.proofImage!).existsSync())
-                  ClipRRect(
-                    borderRadius: BorderRadius.circular(8.r),
-                    child: Image.file(
-                      File(record.proofImage!),
-                      height: 120.h,
-                      width: double.infinity,
-                      fit: BoxFit.cover,
-                    ),
-                  )
+                if (record.proofImages.isNotEmpty)
+                  _buildProofImages(record.proofImages)
                 else
                   Container(
                     height: 80.h,
@@ -139,6 +139,42 @@ class ApprovalTab extends ConsumerWidget {
           ),
         );
       },
+    ),
+      ),
+    );
+  }
+
+  /// 展示打卡凭证多张照片 (横向滚动)。
+  Widget _buildProofImages(List<String> images) {
+    final valid = images.where((p) => p.isNotEmpty && File(p).existsSync()).toList();
+    if (valid.isEmpty) {
+      return Container(
+        height: 80.h,
+        width: double.infinity,
+        color: Colors.grey.shade200,
+        child: const Center(child: Icon(Icons.image, color: Colors.grey)),
+      );
+    }
+    return SizedBox(
+      height: 140.h,
+      child: ListView.builder(
+        scrollDirection: Axis.horizontal,
+        itemCount: valid.length,
+        itemBuilder: (context, index) {
+          return Container(
+            margin: EdgeInsets.only(right: 8.w),
+            child: ClipRRect(
+              borderRadius: BorderRadius.circular(8.r),
+              child: Image.file(
+                File(valid[index]),
+                width: 140.w,
+                height: 140.h,
+                fit: BoxFit.cover,
+              ),
+            ),
+          );
+        },
+      ),
     );
   }
 
@@ -147,7 +183,10 @@ class ApprovalTab extends ConsumerWidget {
     if (exchanges.isEmpty) {
       return const Center(child: Text('暂无待审批兑换', style: TextStyle(color: Colors.grey)));
     }
-    return ListView.builder(
+    return Center(
+      child: ConstrainedBox(
+        constraints: const BoxConstraints(maxWidth: 800),
+        child: ListView.builder(
       padding: EdgeInsets.all(16.w),
       itemCount: exchanges.length,
       itemBuilder: (context, index) {
@@ -155,9 +194,22 @@ class ApprovalTab extends ConsumerWidget {
         final child = _childName(ref, exchange.childId);
         return Card(
           margin: EdgeInsets.only(bottom: 12.h),
+          elevation: 0,
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(14.r),
+            side: BorderSide(color: Colors.grey.shade200),
+          ),
           child: ListTile(
             contentPadding: EdgeInsets.symmetric(horizontal: 16.w, vertical: 8.h),
-            leading: Icon(Icons.card_giftcard, color: UltramanTheme.gold, size: 32.r),
+            leading: Container(
+              width: 44.w,
+              height: 44.w,
+              decoration: BoxDecoration(
+                color: UltramanTheme.gold.withValues(alpha: 0.15),
+                shape: BoxShape.circle,
+              ),
+              child: Icon(Icons.card_giftcard, color: UltramanTheme.gold, size: 24.r),
+            ),
             title: Text(exchange.rewardTitle, style: TextStyle(fontSize: 15.sp, fontWeight: FontWeight.bold)),
             subtitle: Text('$child 申请 · 消耗 ${exchange.costCoins} 币', style: TextStyle(fontSize: 13.sp)),
             trailing: Row(
@@ -165,16 +217,19 @@ class ApprovalTab extends ConsumerWidget {
               children: [
                 IconButton(
                   icon: Icon(Icons.close, color: Colors.red, size: 24.r),
-                  onPressed: () => ref.read(exchangeProvider.notifier).review(exchange.id, false),
+                  onPressed: () {
+                    // 驳回：退回已扣的能量币。
+                    ref.read(familyProfileProvider.notifier).refundCoins(
+                          exchange.childId,
+                          exchange.costCoins,
+                        );
+                    ref.read(exchangeProvider.notifier).review(exchange.id, false);
+                  },
                 ),
                 IconButton(
                   icon: Icon(Icons.check_circle, color: Colors.green, size: 24.r),
                   onPressed: () {
-                    // 审核通过：扣除能量币并发放
-                    ref.read(familyProfileProvider.notifier).spendCoins(
-                          exchange.childId,
-                          exchange.costCoins,
-                        );
+                    // 审核通过：能量币已在兑换发起时扣除，这里仅标记发放。
                     ref.read(exchangeProvider.notifier).review(exchange.id, true);
                   },
                 ),
@@ -183,6 +238,8 @@ class ApprovalTab extends ConsumerWidget {
           ),
         );
       },
+    ),
+      ),
     );
   }
 

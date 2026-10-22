@@ -69,6 +69,11 @@ class _StarfieldPainter extends CustomPainter {
 }
 
 /// 怪兽占位图形 (基于 iconName 变化配色与形状，模拟不同怪兽)。
+///
+/// 根据 [iconName] 的哈希值，组合出差异化的怪兽形象：
+/// 不同身体形状（圆/椭圆/三角）、角类型（双角/触须/耳朵/独角）、
+/// 眼睛（圆/椭圆/斜眼）、嘴巴（锯齿/獠牙/笑），并搭配不同配色，
+/// 让每个任务都有独一无二的怪兽，而非仅颜色不同。
 class MonsterAvatar extends StatelessWidget {
   final String iconName;
   final double size;
@@ -87,76 +92,231 @@ class _MonsterPainter extends CustomPainter {
   final String iconName;
   _MonsterPainter(this.iconName);
 
+  // 基于名字哈希的稳定随机源，保证同一怪兽每次绘制一致。
+  int get _h => iconName.hashCode.abs();
+
+  // 配色更丰富 (11 种)，按哈希取。
   Color get _baseColor {
-    // 依据怪兽名哈希得到稳定配色 (统一到科幻暗色系)
-    final hash = iconName.hashCode.abs();
-    final palette = [
-      const Color(0xFF7C4DFF), // 紫
-      const Color(0xFF26A69A), // 青
-      const Color(0xFF5C6BC0), // 靛蓝
-      const Color(0xFF0097A7), // 蓝绿
-      const Color(0xFF7E57C2), // 深紫
+    const palette = [
+      Color(0xFF7C4DFF), // 紫
+      Color(0xFF26A69A), // 青
+      Color(0xFF5C6BC0), // 靛蓝
+      Color(0xFF0097A7), // 蓝绿
+      Color(0xFF7E57C2), // 深紫
+      Color(0xFFEF6C00), // 橙
+      Color(0xFF43A047), // 绿
+      Color(0xFFE53935), // 红
+      Color(0xFF00897B), // 深青
+      Color(0xFF8E24AA), // 紫红
+      Color(0xFF3949AB), // 靛
     ];
-    return palette[hash % palette.length];
+    return palette[_h % palette.length];
   }
+
+  Color get _bellyColor => Color.lerp(_baseColor, Colors.white, 0.55)!;
 
   @override
   void paint(Canvas canvas, Size size) {
     final center = Offset(size.width / 2, size.height / 2);
     final radius = size.width / 2;
 
-    // 身体
+    final bodyShape = _h % 3; // 0=圆 1=椭圆 2=三角
+    final hornType = (_h ~/ 3) % 4; // 0=双角 1=触须 2=耳朵 3=独角
+    final eyeType = (_h ~/ 12) % 3; // 0=圆眼 1=椭圆眼 2=斜眼
+    final mouthType = (_h ~/ 36) % 3; // 0=锯齿 1=獠牙 2=笑
+
+    // ===== 身体 =====
     final body = Paint()..color = _baseColor;
-    canvas.drawCircle(center, radius * 0.85, body);
-
-    // 眼睛
-    final eye = Paint()..color = Colors.white;
-    canvas.drawCircle(
-        Offset(center.dx - radius * 0.3, center.dy - radius * 0.15), radius * 0.22, eye);
-    canvas.drawCircle(
-        Offset(center.dx + radius * 0.3, center.dy - radius * 0.15), radius * 0.22, eye);
-
-    // 瞳孔 (能量金，发光感)
-    final pupil = Paint()..color = const Color(0xFFFFC107);
-    canvas.drawCircle(
-        Offset(center.dx - radius * 0.3, center.dy - radius * 0.15), radius * 0.1, pupil);
-    canvas.drawCircle(
-        Offset(center.dx + radius * 0.3, center.dy - radius * 0.15), radius * 0.1, pupil);
-
-    // 嘴巴 (锯齿)
-    final mouth = Paint()
-      ..color = Colors.white
-      ..strokeWidth = radius * 0.08
-      ..style = PaintingStyle.stroke;
-    final path = Path();
-    path.moveTo(center.dx - radius * 0.4, center.dy + radius * 0.3);
-    for (int i = 0; i <= 4; i++) {
-      final x = center.dx - radius * 0.4 + (radius * 0.8) * i / 4;
-      final y = center.dy + radius * 0.3 + (i.isEven ? -radius * 0.12 : radius * 0.12);
-      path.lineTo(x, y);
+    switch (bodyShape) {
+      case 1: // 椭圆
+        canvas.drawOval(
+          Rect.fromCenter(
+            center: center,
+            width: radius * 1.8,
+            height: radius * 1.5,
+          ),
+          body,
+        );
+        break;
+      case 2: // 三角（怪兽头部更尖锐）
+        final path = Path()
+          ..moveTo(center.dx, center.dy - radius * 1.3)
+          ..lineTo(center.dx + radius * 1.15, center.dy + radius * 1.1)
+          ..lineTo(center.dx - radius * 1.15, center.dy + radius * 1.1)
+          ..close();
+        canvas.drawPath(path, body);
+        break;
+      default: // 圆
+        canvas.drawCircle(center, radius * 0.9, body);
     }
-    canvas.drawPath(path, mouth);
 
-    // 触角
-    final horn = Paint()
-      ..color = _baseColor
-      ..style = PaintingStyle.fill;
-    final hornPath = Path()
-      ..moveTo(center.dx - radius * 0.5, center.dy - radius * 0.6)
-      ..lineTo(center.dx - radius * 0.7, center.dy - radius * 1.0)
-      ..lineTo(center.dx - radius * 0.3, center.dy - radius * 0.75)
-      ..close();
-    canvas.drawPath(hornPath, horn);
-    final hornPath2 = Path()
-      ..moveTo(center.dx + radius * 0.5, center.dy - radius * 0.6)
-      ..lineTo(center.dx + radius * 0.7, center.dy - radius * 1.0)
-      ..lineTo(center.dx + radius * 0.3, center.dy - radius * 0.75)
-      ..close();
-    canvas.drawPath(hornPath2, horn);
+    // ===== 肚子（浅色圆形） =====
+    final belly = Paint()..color = _bellyColor;
+    canvas.drawOval(
+      Rect.fromCenter(
+        center: Offset(center.dx, center.dy + radius * 0.35),
+        width: radius * 0.9,
+        height: radius * 0.7,
+      ),
+      belly,
+    );
+
+    // ===== 角 / 触须 / 耳朵 =====
+    _drawHorns(canvas, center, radius, hornType);
+
+    // ===== 眼睛 =====
+    _drawEyes(canvas, center, radius, eyeType);
+
+    // ===== 嘴巴 =====
+    _drawMouth(canvas, center, radius, mouthType);
+  }
+
+  void _drawHorns(Canvas canvas, Offset center, double radius, int hornType) {
+    final horn = Paint()..color = _baseColor;
+    final hornDark = Paint()..color = Color.lerp(_baseColor, Colors.black, 0.25)!;
+
+    switch (hornType) {
+      case 1: // 触须（顶部两根弯曲线 + 圆球）
+        final tentacle = Paint()
+          ..color = _baseColor
+          ..strokeWidth = radius * 0.12
+          ..strokeCap = StrokeCap.round
+          ..style = PaintingStyle.stroke;
+        for (final side in [-1.0, 1.0]) {
+          final start = Offset(center.dx + side * radius * 0.4, center.dy - radius * 0.6);
+          final end = Offset(center.dx + side * radius * 0.9, center.dy - radius * 1.1);
+          canvas.drawLine(start, end, tentacle);
+          canvas.drawCircle(end, radius * 0.14, horn);
+        }
+        break;
+      case 2: // 耳朵（顶部两个三角）
+        for (final side in [-1.0, 1.0]) {
+          final path = Path()
+            ..moveTo(center.dx + side * radius * 0.25, center.dy - radius * 0.6)
+            ..lineTo(center.dx + side * radius * 0.75, center.dy - radius * 1.2)
+            ..lineTo(center.dx + side * radius * 0.85, center.dy - radius * 0.4)
+            ..close();
+          canvas.drawPath(path, horn);
+        }
+        break;
+      case 3: // 独角（顶部中间单角）
+        final path = Path()
+          ..moveTo(center.dx - radius * 0.2, center.dy - radius * 0.6)
+          ..lineTo(center.dx, center.dy - radius * 1.35)
+          ..lineTo(center.dx + radius * 0.2, center.dy - radius * 0.6)
+          ..close();
+        canvas.drawPath(path, hornDark);
+        break;
+      default: // 双角
+        for (final side in [-1.0, 1.0]) {
+          final path = Path()
+            ..moveTo(center.dx + side * radius * 0.35, center.dy - radius * 0.65)
+            ..lineTo(center.dx + side * radius * 0.7, center.dy - radius * 1.15)
+            ..lineTo(center.dx + side * radius * 0.15, center.dy - radius * 0.85)
+            ..close();
+          canvas.drawPath(path, hornDark);
+        }
+    }
+  }
+
+  void _drawEyes(Canvas canvas, Offset center, double radius, int eyeType) {
+    final eyeWhite = Paint()..color = Colors.white;
+    final pupil = Paint()..color = const Color(0xFFFFC107);
+
+    switch (eyeType) {
+      case 1: // 椭圆眼（横长）
+        for (final side in [-1.0, 1.0]) {
+          final eyeCenter = Offset(center.dx + side * radius * 0.32, center.dy - radius * 0.15);
+          final rect = Rect.fromCenter(
+            center: eyeCenter,
+            width: radius * 0.55,
+            height: radius * 0.3,
+          );
+          canvas.drawOval(rect, eyeWhite);
+          canvas.drawOval(
+            Rect.fromCenter(
+              center: eyeCenter,
+              width: radius * 0.24,
+              height: radius * 0.3,
+            ),
+            pupil,
+          );
+        }
+        break;
+      case 2: // 斜眼（怒目）
+        for (final side in [-1.0, 1.0]) {
+          final eyeCenter = Offset(center.dx + side * radius * 0.32, center.dy - radius * 0.15);
+          final eyePaint = Paint()
+            ..color = Colors.white
+            ..strokeWidth = radius * 0.14
+            ..strokeCap = StrokeCap.round
+            ..style = PaintingStyle.stroke;
+          canvas.drawLine(
+            Offset(eyeCenter.dx - radius * 0.2, eyeCenter.dy + radius * 0.1),
+            Offset(eyeCenter.dx + radius * 0.2, eyeCenter.dy - radius * 0.1),
+            eyePaint,
+          );
+        }
+        break;
+      default: // 圆眼
+        for (final side in [-1.0, 1.0]) {
+          final eyeCenter = Offset(center.dx + side * radius * 0.32, center.dy - radius * 0.15);
+          canvas.drawCircle(eyeCenter, radius * 0.2, eyeWhite);
+          canvas.drawCircle(eyeCenter, radius * 0.1, pupil);
+        }
+        break;
+    }
+  }
+
+  void _drawMouth(Canvas canvas, Offset center, double radius, int mouthType) {
+    final mouthY = center.dy + radius * 0.28;
+
+    switch (mouthType) {
+      case 1: // 獠牙（两颗尖牙）
+        final fang = Paint()..color = Colors.white;
+        for (final side in [-1.0, 1.0]) {
+          final path = Path()
+            ..moveTo(center.dx + side * radius * 0.3, mouthY)
+            ..lineTo(center.dx + side * radius * 0.18, mouthY + radius * 0.32)
+            ..lineTo(center.dx + side * radius * 0.06, mouthY)
+            ..close();
+          canvas.drawPath(path, fang);
+        }
+        break;
+      case 2: // 笑（弯月）
+        final smile = Paint()
+          ..color = Colors.white
+          ..strokeWidth = radius * 0.08
+          ..style = PaintingStyle.stroke
+          ..strokeCap = StrokeCap.round;
+        canvas.drawArc(
+          Rect.fromCenter(center: Offset(center.dx, mouthY), width: radius * 0.7, height: radius * 0.4),
+          0.15,
+          3.14 - 0.3,
+          false,
+          smile,
+        );
+        break;
+      default: // 锯齿嘴
+        final mouth = Paint()
+          ..color = Colors.white
+          ..strokeWidth = radius * 0.07
+          ..style = PaintingStyle.stroke;
+        final path = Path();
+        path.moveTo(center.dx - radius * 0.38, mouthY);
+        for (int i = 0; i <= 4; i++) {
+          final x = center.dx - radius * 0.38 + (radius * 0.76) * i / 4;
+          final y = mouthY + (i.isEven ? -radius * 0.12 : radius * 0.12);
+          path.lineTo(x, y);
+        }
+        canvas.drawPath(path, mouth);
+        break;
+    }
   }
 
   @override
-  bool shouldRepaint(covariant CustomPainter oldDelegate) => false;
+  bool shouldRepaint(covariant _MonsterPainter oldDelegate) =>
+      oldDelegate.iconName != iconName;
 }
 
 /// 光之巨人头像 (奥特曼风格)。

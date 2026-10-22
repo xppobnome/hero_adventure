@@ -249,45 +249,86 @@ class _ShortcutSettingsCardState extends ConsumerState<ShortcutSettingsCard> {
       return;
     }
 
-    // 先检查设备是否支持桌面快捷方式（Android 8.0+ 且系统支持）。
-    final supported = await NativeTools.isPinnedShortcutSupported();
-    if (!supported) {
-      if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          content: Text('当前设备不支持创建桌面快捷方式'),
-          backgroundColor: Colors.orange,
-        ),
-      );
-      return;
-    }
+    // 注意：不要在这里用 isPinnedShortcutSupported 做前置拦截。部分 ROM 的
+    // isRequestPinShortcutSupported 会误报 false，导致直接走权限引导而根本
+    // 没调用 requestPinShortcut。直接调用原生 createPinnedShortcut。
+    //
+    // 关键：requestPinShortcut 在国产 ROM 上即使权限被拦截也可能返回 true
+    // （API 层面「请求被接受」，但系统确认框被静默拦截不弹出），因此不能
+    // 只靠返回值判断成败。这里改为调用后【始终弹出引导对话框】，让用户
+    // 自行确认系统是否弹框、并提供「前往系统设置」入口。
 
     setState(() => _creating = true);
+    bool ok = false;
+    String? error;
     try {
       // 复用 AppDisplay 统一解析名字与图标，保证与启动图/关于页一致。
       final label = AppDisplay.resolveName(storage, child);
       final iconPath = AppDisplay.resolveIconPath(storage, child);
 
-      final ok = await NativeTools.createPinnedShortcut(
+      ok = await NativeTools.createPinnedShortcut(
         id: 'child_${child.id}',
         label: label,
         iconPath: iconPath.isEmpty ? null : iconPath,
       );
-
-      if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text(ok ? '已请求创建桌面快捷方式' : '创建快捷方式失败，请重试'),
-          backgroundColor: ok ? Colors.green : Colors.red,
-        ),
-      );
     } catch (e) {
-      if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('创建快捷方式失败：$e'), backgroundColor: Colors.red),
-      );
+      error = e.toString();
     } finally {
       if (mounted) setState(() => _creating = false);
     }
+
+    if (!mounted) return;
+
+    // 无论结果如何，都弹引导对话框，提供清晰的下一步操作。
+    _showShortcutGuide(success: error == null && ok);
+  }
+
+  /// 快捷方式创建结果引导对话框。
+  ///
+  /// 国内定制 ROM（小米/华为/OPPO/vivo 等）对桌面快捷方式做了额外权限拦截，
+  /// 系统原生确认框经常弹不出来。无论 requestPinShortcut 返回什么，都弹此框，
+  /// 让用户确认结果并引导到系统设置手动授权。
+  void _showShortcutGuide({required bool success}) {
+    showDialog(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: Row(
+          children: [
+            Icon(
+              success ? Icons.check_circle_outline : Icons.error_outline,
+              color: success ? Colors.green : Colors.orange,
+            ),
+            const SizedBox(width: 8),
+            Text(success ? '请确认快捷方式' : '需要开启快捷方式权限'),
+          ],
+        ),
+        content: Text(
+          success
+              ? '已向系统发起创建请求。\n\n'
+                    '如果手机屏幕上已经弹出确认框，请点击「添加」完成创建。\n'
+                    '如果【没有弹出任何确认框】，说明手机系统拦截了请求'
+                    '（小米 / 华为 / OPPO / vivo 等常见），请前往系统设置开启'
+                    '「桌面快捷方式」权限后再回来重新创建。'
+              : '创建请求被手机系统拦截，无法自动添加。\n\n'
+                    '请前往系统设置，在「应用权限 / 权限管理」中找到'
+                    '「桌面快捷方式」，将其设为「允许」，然后再回来重新创建。',
+          style: const TextStyle(fontSize: 14, height: 1.5),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(ctx),
+            child: const Text('关闭'),
+          ),
+          ElevatedButton.icon(
+            onPressed: () async {
+              Navigator.pop(ctx);
+              await NativeTools.openAppSettings();
+            },
+            icon: const Icon(Icons.settings, size: 18),
+            label: const Text('前往系统设置'),
+          ),
+        ],
+      ),
+    );
   }
 }

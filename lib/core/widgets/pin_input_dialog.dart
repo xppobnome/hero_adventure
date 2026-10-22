@@ -109,9 +109,9 @@ class _PinInputDialogState extends State<PinInputDialog> {
             mainAxisAlignment: MainAxisAlignment.center,
             children: List.generate(4, (index) {
               return Container(
-                margin: EdgeInsets.symmetric(horizontal: 6.w),
-                width: 14.w,
-                height: 14.w,
+                margin: const EdgeInsets.symmetric(horizontal: 8),
+                width: 16,
+                height: 16,
                 decoration: BoxDecoration(
                   shape: BoxShape.circle,
                   color: index < _pin.length
@@ -122,7 +122,7 @@ class _PinInputDialogState extends State<PinInputDialog> {
               );
             }),
           ),
-          SizedBox(height: 16.h),
+          const SizedBox(height: 16),
           PinKeypad(
             onKeyPress: _onKey,
             onDelete: _onDelete,

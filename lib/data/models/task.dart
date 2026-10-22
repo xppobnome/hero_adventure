@@ -5,7 +5,9 @@
 /// - `weekly` 每周任务
 /// - `once`   单次/紧急委托
 /// - `checkin_week` 打卡一周 (连续打卡满一周)
+/// - `checkin_month` 连续打卡30天 (连续打卡满一个月)
 /// - `custom_days`  打卡指定日期 (家长选择一周内的具体星期几)
+/// - `custom_range` 自定义打卡周期 (从起始日期到结束日期连续打卡)
 /// - `math`   每日数学题学习 (儿童作答后判定)
 ///
 /// 完成后可指定奖励 [rewardId]，为空则默认发放 [rewardCoins]/[rewardExp]。
@@ -21,6 +23,10 @@ class Task {
   // ===== 新增扩展字段 (向后兼容默认值) =====
   final List<int> selectedDays; // 当 type == 'custom_days' 时，选中的星期几 (1=周一 ... 7=周日)
   final String? rewardId; // 完成后指定的奖励项 ID (关联 RewardItem)
+
+  // ===== 自定义打卡周期字段 (type == 'custom_range' 时生效) =====
+  final String rangeStart; // 起始日期 YYYY-MM-DD (含)
+  final String rangeEnd; // 结束日期 YYYY-MM-DD (含)
 
   // ===== 数学题任务字段 (type == 'math' 时生效) =====
   final int mathRange; // 题目数值范围：10 或 20
@@ -38,6 +44,8 @@ class Task {
     this.requirePhoto = false,
     this.selectedDays = const [],
     this.rewardId,
+    this.rangeStart = '',
+    this.rangeEnd = '',
     this.mathRange = 10,
     this.mathOp = 'add',
     this.mathCount = 10,
@@ -61,6 +69,8 @@ class Task {
               .toList() ??
           const [],
       rewardId: json['rewardId'] as String?,
+      rangeStart: json['rangeStart'] as String? ?? '',
+      rangeEnd: json['rangeEnd'] as String? ?? '',
       mathRange: json['mathRange'] as int? ?? 10,
       mathOp: json['mathOp'] as String? ?? 'add',
       mathCount: json['mathCount'] as int? ?? 10,
@@ -79,6 +89,8 @@ class Task {
       'requirePhoto': requirePhoto,
       'selectedDays': selectedDays,
       'rewardId': rewardId,
+      'rangeStart': rangeStart,
+      'rangeEnd': rangeEnd,
       'mathRange': mathRange,
       'mathOp': mathOp,
       'mathCount': mathCount,
@@ -97,8 +109,12 @@ class Task {
         return '单次任务';
       case 'checkin_week':
         return '打卡一周';
+      case 'checkin_month':
+        return '连续打卡30天';
       case 'custom_days':
         return '打卡指定日期';
+      case 'custom_range':
+        return '自定义打卡周期';
       case 'math':
         return '每日数学题';
       default:
@@ -116,10 +132,13 @@ class Task {
       case 'custom_days':
         return selectedDays.contains(weekday);
       case 'checkin_week':
+      case 'checkin_month':
       case 'weekly':
         return true; // 每周任务一周内任意完成；打卡一周需累计满7天
       case 'once':
         return true;
+      case 'custom_range':
+        return true; // 自定义周期由日期范围判定，不按星期
       default:
         return true;
     }
@@ -138,9 +157,14 @@ class Task {
         return '仅需完成一次';
       case 'checkin_week':
         return '连续打卡满一周 (7 天)';
+      case 'checkin_month':
+        return '连续打卡满 30 天';
       case 'custom_days':
         final names = selectedDays.map(_weekdayName).join('、');
         return names.isEmpty ? '未选择打卡日期' : '每周 $names 打卡';
+      case 'custom_range':
+        if (rangeStart.isEmpty || rangeEnd.isEmpty) return '未设置打卡周期';
+        return '$rangeStart 至 $rangeEnd 连续打卡';
       default:
         return type;
     }

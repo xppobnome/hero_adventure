@@ -11,6 +11,9 @@ class CheckInLogic {
   /// 一周的连续打卡记录 (针对 checkin_week 类型的任务) 所需天数。
   static const int checkinWeekDays = 7;
 
+  /// 连续打卡30天 (针对 checkin_month 类型的任务) 所需天数。
+  static const int checkinMonthDays = 30;
+
   /// 判定任务在指定日期 (YYYY-MM-DD) 是否「可打卡」。
   ///
   /// 规则：
@@ -19,6 +22,8 @@ class CheckInLogic {
   /// - `once`       全程只可打一次
   /// - `custom_days`仅选中星期几可打
   /// - `checkin_week` 每天可打，累计满 7 天后视为完成
+  /// - `checkin_month` 每天可打，累计满 30 天后视为完成
+  /// - `custom_range` 仅在起始~结束日期区间内可打
   static bool isAvailable({
     required Task task,
     required String childId,
@@ -47,10 +52,37 @@ class CheckInLogic {
       return task.selectedDays.contains(weekday);
     }
 
-    // 打卡一周：累计满 7 天后整体完成，之后不再可打
-    if (task.type == 'checkin_week') {
+    // 每周特训：本周内已完成过一次即不再可打（每周打卡一次）。
+    if (task.type == 'weekly') {
+      final doneThisWeek = completedDaysThisWeek(task, childId, date, records);
+      if (doneThisWeek >= 1) return false;
+      return true;
+    }
+
+    // 自定义打卡周期：仅在起始~结束日期区间内可打
+    if (task.type == 'custom_range') {
+      final target = DateTime.tryParse(date);
+      if (target == null) return false;
+      final start = DateTime.tryParse(task.rangeStart);
+      final end = DateTime.tryParse(task.rangeEnd);
+      if (start == null || end == null) return false;
+      return !target.isBefore(start) && !target.isAfter(end);
+    }
+
+    // 打卡一周：在 [rangeStart, rangeEnd] 窗口内每天可打，窗口结束即完成。
+    if (task.type == 'checkin_week' || task.type == 'checkin_month') {
+      final target = DateTime.tryParse(date);
+      if (target == null) return false;
+      // 有窗口则按窗口判定；无窗口(旧数据)回退到累计计数。
+      if (task.rangeStart.isNotEmpty && task.rangeEnd.isNotEmpty) {
+        final start = DateTime.tryParse(task.rangeStart);
+        final end = DateTime.tryParse(task.rangeEnd);
+        if (start == null || end == null) return false;
+        return !target.isBefore(start) && !target.isAfter(end);
+      }
       final completedDays = _completedDistinctDates(task, childId, records);
-      if (completedDays.length >= checkinWeekDays) return false;
+      final total = task.type == 'checkin_month' ? checkinMonthDays : checkinWeekDays;
+      if (completedDays.length >= total) return false;
       return true;
     }
 
@@ -65,9 +97,19 @@ class CheckInLogic {
     required String date,
     required List<CheckInRecord> records,
   }) {
-    // 打卡一周任务：累计满 7 天即整体完成
-    if (task.type == 'checkin_week') {
-      return _completedDistinctDates(task, childId, records).length >= checkinWeekDays;
+    // 每周特训：本周内已完成过一次即完成（每周打卡一次）。
+    if (task.type == 'weekly') {
+      return completedDaysThisWeek(task, childId, date, records) >= 1;
+    }
+    // 打卡一周 / 连续30天：在窗口内完成所有目标天数即整体完成。
+    if (task.type == 'checkin_week' || task.type == 'checkin_month') {
+      final total = task.type == 'checkin_month' ? checkinMonthDays : checkinWeekDays;
+      if (task.rangeStart.isNotEmpty && task.rangeEnd.isNotEmpty) {
+        // 窗口内完成的目标天数 = 窗口长度；已打卡天数 >= 目标即完成。
+        final done = _completedDistinctDates(task, childId, records).length;
+        return done >= total;
+      }
+      return _completedDistinctDates(task, childId, records).length >= total;
     }
     return _hasStatus(task, childId, date, records, 'completed');
   }
@@ -91,14 +133,42 @@ class CheckInLogic {
     return _completedDistinctDates(task, childId, records).length;
   }
 
-  /// 打卡一周任务的进度描述 (已完成 x / 7 天)。
-  static String checkinWeekProgress({
+  /// 每周特训 (weekly)：计算指定日期所在自然周内已完成打卡的天数。
+  ///
+  /// 自然周以周一为一周开始。只统计落在 [周一, 周日] 内的已完成打卡日期。
+  static int completedDaysThisWeek(
+    Task task,
+    String childId,
+    String date,
+    List<CheckInRecord> records,
+  ) {
+    final target = DateTime.tryParse(date);
+    if (target == null) return 0;
+    final monday = target.subtract(Duration(days: target.weekday - 1));
+    final sunday = monday.add(const Duration(days: 6));
+
+    return records
+        .where((r) =>
+            r.childId == childId && r.taskId == task.id && r.status == 'completed')
+        .map((r) => DateTime.tryParse(r.date))
+        .whereType<DateTime>()
+        .where((d) => !d.isBefore(monday) && !d.isAfter(sunday))
+        .map((d) =>
+            '${d.year}-${d.month.toString().padLeft(2, '0')}-${d.day.toString().padLeft(2, '0')}')
+        .toSet()
+        .length;
+  }
+
+  /// 连续打卡任务的进度描述 (已完成 x / N 天)。
+  /// N 由任务类型决定：checkin_week = 7，checkin_month = 30。
+  static String checkinProgress({
     required Task task,
     required String childId,
     required List<CheckInRecord> records,
   }) {
     final days = completedDaysOfWeek(task: task, childId: childId, records: records);
-    return '$days / $checkinWeekDays';
+    final total = task.type == 'checkin_month' ? checkinMonthDays : checkinWeekDays;
+    return '$days / $total';
   }
 
   // ===== 内部辅助 =====

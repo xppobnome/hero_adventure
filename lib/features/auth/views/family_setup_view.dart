@@ -9,15 +9,25 @@ import '../../../core/utils/avatar_picker.dart';
 import '../../../core/utils/native_tools.dart';
 import '../../../core/widgets/child_avatar.dart';
 import '../../../core/widgets/pin_keypad.dart';
+import '../../../core/widgets/ultraman_visuals.dart';
 import '../../../data/models/child_profile.dart';
 import '../../../data/models/family_profile.dart';
 import '../../../domain/preset_templates.dart';
 import '../../../domain/providers/family_provider.dart';
 import '../../../domain/providers/reward_provider.dart';
 import '../../../domain/providers/task_provider.dart';
+import '../../../domain/providers/theme_provider.dart';
 import '../../sync/views/sync_dashboard_view.dart';
 import 'role_selection_view.dart';
 
+/// 首次配置引导页。
+///
+/// 四步流程：① 设置家长防卫锁 PIN → ② 创建英雄档案 → ③ 选择防卫主题
+/// → ④ 挑选任务与奖励。顶部用自定义进度条替代原 Stepper 默认样式，
+/// 任务/奖励以「分类分组 + 卡片网格」展示，更直观美观。
+///
+/// 平板适配：内容区 maxWidth 居中；任务/奖励卡片按屏幕宽度自适应列数
+/// （手机 1~2 列、平板 3~4 列），横竖屏均可用。
 class FamilySetupView extends ConsumerStatefulWidget {
   const FamilySetupView({super.key});
 
@@ -33,27 +43,21 @@ class _FamilySetupViewState extends ConsumerState<FamilySetupView> {
   String _selectedTheme = 'ultraman';
   String _avatarImage = ''; // 儿童头像本地路径 (空则占位)
 
-  // 第 4 步：多选任务与奖励模板 (默认全选常用项)。
-  final Set<int> _selectedTaskIndexes = {
-    for (int i = 0; i < taskTemplates.length; i++)
-      if (i < 10) i, // 默认勾选前 10 个常用任务
-  };
-  final Set<int> _selectedRewardIndexes = {
-    for (int i = 0; i < rewardTemplates.length; i++)
-      if (i < 6) i, // 默认勾选前 6 个常用奖励
-  };
-
-  // 桌面快捷方式设置：是否用儿童头像作图标 / 用昵称作名字。
-  bool _shortcutUseAvatar = false;
-  bool _shortcutUseName = true;
-  String _shortcutCustomName = '';
-
-  final _shortcutNameController = TextEditingController();
+  // 第 4 步：多选任务与奖励模板 (默认全不选，家长自行勾选)。
+  final Set<int> _selectedTaskIndexes = {};
+  final Set<int> _selectedRewardIndexes = {};
 
   // PIN 码用自定义数字键盘输入，避免唤起系统输入法。
   String _pin = '';
   String _confirmPin = '';
   bool _pinConfirmed = false; // false=正在输入PIN，true=正在确认PIN
+
+  static const _stepTitles = [
+    '设置防卫锁',
+    '创建英雄档案',
+    '选择防卫主题',
+    '挑选任务与奖励',
+  ];
 
   void _onPinKeyPress(String key) {
     if (_pinConfirmed) {
@@ -70,7 +74,8 @@ class _FamilySetupViewState extends ConsumerState<FamilySetupView> {
   void _onPinDelete() {
     if (_pinConfirmed) {
       if (_confirmPin.isNotEmpty) {
-        setState(() => _confirmPin = _confirmPin.substring(0, _confirmPin.length - 1));
+        setState(
+            () => _confirmPin = _confirmPin.substring(0, _confirmPin.length - 1));
       }
     } else {
       if (_pin.isNotEmpty) {
@@ -128,15 +133,11 @@ class _FamilySetupViewState extends ConsumerState<FamilySetupView> {
   /// 保存桌面快捷方式偏好，并（若开启）创建桌面快捷方式。
   Future<void> _applyShortcut(ChildProfile child) async {
     final storage = ref.read(storageProvider);
-    await storage.setShortcutUseAvatar(_shortcutUseAvatar);
-    await storage.setShortcutUseName(_shortcutUseName);
-    await storage.setShortcutCustomName(_shortcutCustomName);
-
-    // 首次配置中若启用了自定义头像或昵称，则默认同步开启
-    // 「启动图/关于页显示自定义内容」，让自定义内容全局生效。
-    if (_shortcutUseAvatar || _shortcutUseName || _shortcutCustomName.isNotEmpty) {
-      await storage.setUseCustomAppDisplay(true);
-    }
+    // 桌面快捷方式的自定义头像/昵称已移至「家长控制台 -> 设置 -> 桌面快捷方式」，
+    // 引导阶段不再提供开关，统一使用默认值（昵称作名字）。
+    await storage.setShortcutUseAvatar(false);
+    await storage.setShortcutUseName(true);
+    await storage.setShortcutCustomName('');
 
     // 复用 AppDisplay 统一解析名字与图标。
     final label = AppDisplay.resolveName(storage, child);
@@ -144,7 +145,6 @@ class _FamilySetupViewState extends ConsumerState<FamilySetupView> {
 
     // 不阻塞首次配置流程：创建快捷方式会触发系统确认框（Android 8.0+），
     // 放到后台执行，避免卡住「完成并开启冒险」的页面跳转。
-    // 先检查设备是否支持，不支持则静默跳过（不打扰首次配置）。
     unawaited(() async {
       final supported = await NativeTools.isPinnedShortcutSupported();
       if (!supported) return;
@@ -154,6 +154,56 @@ class _FamilySetupViewState extends ConsumerState<FamilySetupView> {
         iconPath: iconPath.isEmpty ? null : iconPath,
       );
     }());
+  }
+
+  // ===== 步骤校验与推进 =====
+  void _onContinue() {
+    if (_currentStep == 0) {
+      if (_pin.length != 4) {
+        _toast('请先输入 4 位 PIN 码');
+        return;
+      }
+      if (!_pinConfirmed) {
+        setState(() => _pinConfirmed = true);
+        return;
+      }
+      if (_confirmPin.length != 4 || _confirmPin != _pin) {
+        _toast('两次 PIN 码不一致，请重新输入');
+        setState(() {
+          _pin = '';
+          _confirmPin = '';
+          _pinConfirmed = false;
+        });
+        return;
+      }
+    } else if (_currentStep == 1) {
+      if (_childNameController.text.trim().isEmpty) {
+        _toast('请输入英雄昵称');
+        return;
+      }
+    }
+
+    if (_currentStep < 3) {
+      setState(() => _currentStep += 1);
+    } else {
+      _submitRegistration();
+    }
+  }
+
+  void _onBack() {
+    if (_currentStep > 0) {
+      setState(() {
+        _currentStep -= 1;
+        _pin = '';
+        _confirmPin = '';
+        _pinConfirmed = false;
+      });
+    }
+  }
+
+  void _toast(String msg) {
+    ScaffoldMessenger.of(context)
+        .showSnackBar(SnackBar(content: Text(msg)));
   }
 
   @override
@@ -170,245 +220,29 @@ class _FamilySetupViewState extends ConsumerState<FamilySetupView> {
               );
             },
             icon: Icon(Icons.cloud_download, color: Colors.white, size: 18.r),
-            label: Text('从云端恢复', style: TextStyle(color: Colors.white, fontSize: 14.sp)),
+            label: Text('从云端恢复',
+                style: TextStyle(color: Colors.white, fontSize: 14.sp)),
           ),
         ],
       ),
       body: SafeArea(
         // 关键：SingleChildScrollView 必须在最外层（占据全部高度），
-        // 内层用 Align(topCenter) 只做水平居中、垂直靠顶。若用 Center
-        // 包裹滚动视图（反过来），或滚动视图内用 Center，都会因滚动轴
-        // 方向为无限高度而产生垂直居中错位，导致内容超出屏幕时无法
-        // 滚到最底部（平板端尤其明显）。
+        // 内层用 Align(topCenter) 只做水平居中、垂直靠顶，避免滚动错位。
         child: SingleChildScrollView(
           child: Align(
             alignment: Alignment.topCenter,
             child: Container(
-              constraints: BoxConstraints(maxWidth: 560),
-              child: Stepper(
-              type: StepperType.vertical,
-              // 关键：Stepper 内部是一个 shrinkWrap 的 ListView，默认带可滚动
-              // physics（Android 为 ClampingScrollPhysics），会抢占滚动手势，
-              // 导致外层 SingleChildScrollView 无法滚到最底部。这里禁用它，
-              // 让整个引导页由外层统一滚动。
-              physics: const NeverScrollableScrollPhysics(),
-              currentStep: _currentStep,
-              // 【统一样式】：重写底部按钮栏，自动适配 main.dart 中的 ElevatedButtonTheme
-              controlsBuilder: (context, details) {
-                return Padding(
-                  padding: EdgeInsets.only(top: 24.h),
-                  child: Row(
-                    children: [
-                      ElevatedButton(
-                        onPressed: details.onStepContinue,
-                        child: Text(
-                            _currentStep == 3
-                                ? '完成并开启冒险'
-                                : (_currentStep == 0 && _pin.length == 4 && !_pinConfirmed)
-                                    ? '确认 PIN 码'
-                                    : '下一步',
-                            style: TextStyle(fontSize: 16.sp)
-                        ),
-                      ),
-                      if (_currentStep > 0) ...[
-                        SizedBox(width: 16.w),
-                        TextButton(
-                          onPressed: details.onStepCancel,
-                          child: Text(
-                              '上一步',
-                              style: TextStyle(fontSize: 16.sp, color: Colors.grey.shade700)
-                          ),
-                        ),
-                      ]
-                    ],
-                  ),
-                );
-              },
-              onStepContinue: () {
-                if (_currentStep == 0) {
-                  // 尚未完成 PIN 输入
-                  if (_pin.length != 4) {
-                    ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('请先输入4位 PIN 码')));
-                    return;
-                  }
-                  // 已输入 PIN 但尚未确认
-                  if (!_pinConfirmed) {
-                    setState(() => _pinConfirmed = true);
-                    return;
-                  }
-                  // 校验确认 PIN 是否一致
-                  if (_confirmPin.length != 4 || _confirmPin != _pin) {
-                    ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('两次 PIN 码不一致，请重新输入')));
-                    setState(() {
-                      _pin = '';
-                      _confirmPin = '';
-                      _pinConfirmed = false;
-                    });
-                    return;
-                  }
-                } else if (_currentStep == 1) {
-                  if (_childNameController.text.trim().isEmpty) {
-                    ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('请输入儿童昵称')));
-                    return;
-                  }
-                }
-
-                if (_currentStep < 3) {
-                  setState(() => _currentStep += 1);
-                } else {
-                  _submitRegistration();
-                }
-              },
-              onStepCancel: () {
-                if (_currentStep > 0) {
-                  setState(() {
-                    _currentStep -= 1;
-                    // 返回上一步时重置 PIN 输入状态
-                    _pin = '';
-                    _confirmPin = '';
-                    _pinConfirmed = false;
-                  });
-                }
-              },
-              steps: [
-                Step(
-                  title: Text('第 1 步：设置家长防卫锁', style: TextStyle(fontSize: 18.sp, fontWeight: FontWeight.bold)),
-                  content: Column(
-                    children: [
-                      Text(
-                        _pinConfirmed ? '请再次输入确认 PIN 码' : '请设置 4 位 PIN 码',
-                        style: TextStyle(fontSize: 15.sp, color: Colors.grey.shade700),
-                      ),
-                      SizedBox(height: 16.h),
-                      // PIN 圆点指示器
-                      Row(
-                        mainAxisAlignment: MainAxisAlignment.center,
-                        children: List.generate(4, (index) {
-                          final filled = _pinConfirmed
-                              ? index < _confirmPin.length
-                              : index < _pin.length;
-                          return Container(
-                            margin: EdgeInsets.symmetric(horizontal: 8.w),
-                            width: 18.w,
-                            height: 18.w,
-                            decoration: BoxDecoration(
-                              shape: BoxShape.circle,
-                              color: filled ? const Color(0xFF00A0E9) : Colors.grey.shade300,
-                              border: Border.all(color: Colors.grey.shade400),
-                            ),
-                          );
-                        }),
-                      ),
-                      SizedBox(height: 20.h),
-                      // 自定义九键数字键盘
-                      PinKeypad(
-                        onKeyPress: _onPinKeyPress,
-                        onDelete: _onPinDelete,
-                        keySize: 56,
-                      ),
-                    ],
-                  ),
-                  isActive: _currentStep >= 0,
-                  state: _currentStep > 0 ? StepState.complete : StepState.indexed,
-                ),
-                Step(
-                  title: Text('第 2 步：创建英雄档案', style: TextStyle(fontSize: 18.sp, fontWeight: FontWeight.bold)),
-                  content: Column(
-                    children: [
-                      // 头像选择 (拍照 / 上传)
-                      Center(
-                        child: InkWell(
-                          onTap: () async {
-                            final path = await pickAvatarImage(context);
-                            if (path != null && mounted) {
-                              setState(() => _avatarImage = path);
-                            }
-                          },
-                          borderRadius: BorderRadius.circular(50.r),
-                          child: Stack(
-                            alignment: Alignment.bottomRight,
-                            children: [
-                              ChildAvatar(
-                                avatarImage: _avatarImage,
-                                name: _childNameController.text,
-                                size: 96.w,
-                              ),
-                              Container(
-                                width: 32.w,
-                                height: 32.w,
-                                decoration: const BoxDecoration(
-                                  color: Color(0xFF00A0E9),
-                                  shape: BoxShape.circle,
-                                ),
-                                child: Icon(Icons.camera_alt, size: 16.w, color: Colors.white),
-                              ),
-                            ],
-                          ),
-                        ),
-                      ),
-                      SizedBox(height: 8.h),
-                      Center(
-                        child: Text(
-                          '点击设置头像 (可拍照或上传)',
-                          style: TextStyle(fontSize: 12.sp, color: Colors.grey.shade600),
-                        ),
-                      ),
-                      SizedBox(height: 16.h),
-                      TextField(
-                        controller: _childNameController,
-                        onChanged: (_) => setState(() {}), // 头像占位实时跟随昵称
-                        decoration: InputDecoration(
-                          labelText: '英雄昵称 (例：小明)',
-                          filled: true,
-                          fillColor: Colors.white,
-                          border: OutlineInputBorder(borderRadius: BorderRadius.circular(8.r)),
-                        ),
-                      ),
-                      SizedBox(height: 16.h),
-                      TextField(
-                        controller: _childAgeController,
-                        keyboardType: TextInputType.number,
-                        maxLength: 2,
-                        decoration: InputDecoration(
-                          labelText: '儿童年龄 (岁)',
-                          helperText: '用于匹配适龄的学习题目难度',
-                          filled: true,
-                          fillColor: Colors.white,
-                          border: OutlineInputBorder(borderRadius: BorderRadius.circular(8.r)),
-                        ),
-                      ),
-                    ],
-                  ),
-                  isActive: _currentStep >= 1,
-                  state: _currentStep > 1 ? StepState.complete : StepState.indexed,
-                ),
-                Step(
-                  title: Text('第 3 步：选择防卫主题', style: TextStyle(fontSize: 18.sp, fontWeight: FontWeight.bold)),
-                  content: Container(
-                    decoration: BoxDecoration(
-                      color: Colors.white,
-                      borderRadius: BorderRadius.circular(8.r),
-                      border: Border.all(color: Colors.grey.shade400),
-                    ),
-                    child: RadioListTile<String>(
-                      title: Text('光之守护 (奥特曼宇宙)', style: TextStyle(fontSize: 16.sp, fontWeight: FontWeight.bold)),
-                      subtitle: Text('包含光线攻击音效与怪兽打卡', style: TextStyle(fontSize: 14.sp)),
-                      value: 'ultraman',
-                      groupValue: _selectedTheme,
-                      onChanged: (v) => setState(() => _selectedTheme = v!),
-                      activeColor: const Color(0xFF00A0E9),
-                    ),
-                  ),
-                  isActive: _currentStep >= 2,
-                  state: _currentStep > 2 ? StepState.complete : StepState.indexed,
-                ),
-                Step(
-                  title: Text('第 4 步：挑选任务与奖励', style: TextStyle(fontSize: 18.sp, fontWeight: FontWeight.bold)),
-                  content: _buildPresetPicker(),
-                  isActive: _currentStep >= 3,
-                  state: _currentStep > 3 ? StepState.complete : StepState.indexed,
-                ),
-              ],
+              constraints: BoxConstraints(maxWidth: 720),
+              padding: EdgeInsets.symmetric(horizontal: 20.w, vertical: 16.h),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.stretch,
+                children: [
+                  _buildProgressHeader(),
+                  SizedBox(height: 20.h),
+                  _buildStepContent(),
+                  SizedBox(height: 20.h),
+                  _buildNavButtons(),
+                ],
               ),
             ),
           ),
@@ -417,206 +251,774 @@ class _FamilySetupViewState extends ConsumerState<FamilySetupView> {
     );
   }
 
-  /// 第 4 步：多选预设任务与奖励模板。
-  Widget _buildPresetPicker() {
+  /// 顶部进度指示器：4 个步骤圆点 + 当前步骤名 + 连接线。
+  Widget _buildProgressHeader() {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        // ===== 任务模板 =====
-        Text(
-          '选择打卡任务（可多选，共 ${taskTemplates.length} 个模板）',
-          style: TextStyle(fontSize: 15.sp, fontWeight: FontWeight.bold),
-        ),
-        SizedBox(height: 4.h),
         Row(
           children: [
-            TextButton(
-              onPressed: () => setState(() {
-                _selectedTaskIndexes.addAll(List.generate(taskTemplates.length, (i) => i));
-              }),
-              child: Text('全选', style: TextStyle(fontSize: 13.sp)),
-            ),
-            TextButton(
-              onPressed: () => setState(() => _selectedTaskIndexes.clear()),
-              child: Text('清空', style: TextStyle(fontSize: 13.sp)),
-            ),
-          ],
-        ),
-        SizedBox(height: 8.h),
-        // 不再用 maxHeight 限高：外层 SingleChildScrollView 统一滚动，
-        // 列表 shrinkWrap 完整展开所有模板，避免内容被裁剪导致底部看不到。
-        Container(
-          decoration: BoxDecoration(
-            color: Colors.white,
-            borderRadius: BorderRadius.circular(8.r),
-            border: Border.all(color: Colors.grey.shade300),
-          ),
-          child: ListView.builder(
-            shrinkWrap: true,
-            physics: const NeverScrollableScrollPhysics(),
-            itemCount: taskTemplates.length,
-            itemBuilder: (context, index) {
-              final t = taskTemplates[index];
-              final selected = _selectedTaskIndexes.contains(index);
-              return CheckboxListTile(
-                dense: true,
-                controlAffinity: ListTileControlAffinity.leading,
-                value: selected,
-                title: Text(t.title, style: TextStyle(fontSize: 14.sp)),
-                subtitle: Text(
-                  '${t.type == 'math' ? '数学题' : _typeLabel(t.type)} · ${t.rewardCoins}币/${t.rewardExp}EXP',
-                  style: TextStyle(fontSize: 11.sp, color: Colors.grey.shade600),
-                ),
-                onChanged: (v) => setState(() {
-                  if (v == true) {
-                    _selectedTaskIndexes.add(index);
-                  } else {
-                    _selectedTaskIndexes.remove(index);
-                  }
-                }),
-              );
-            },
-          ),
-        ),
-        SizedBox(height: 16.h),
-
-        // ===== 奖励模板 =====
-        Text(
-          '选择奖励（可多选，共 ${rewardTemplates.length} 个模板）',
-          style: TextStyle(fontSize: 15.sp, fontWeight: FontWeight.bold),
-        ),
-        SizedBox(height: 4.h),
-        Row(
-          children: [
-            TextButton(
-              onPressed: () => setState(() {
-                _selectedRewardIndexes.addAll(List.generate(rewardTemplates.length, (i) => i));
-              }),
-              child: Text('全选', style: TextStyle(fontSize: 13.sp)),
-            ),
-            TextButton(
-              onPressed: () => setState(() => _selectedRewardIndexes.clear()),
-              child: Text('清空', style: TextStyle(fontSize: 13.sp)),
-            ),
-          ],
-        ),
-        SizedBox(height: 8.h),
-        // 同样去掉 maxHeight，完整展开所有奖励模板。
-        Container(
-          decoration: BoxDecoration(
-            color: Colors.white,
-            borderRadius: BorderRadius.circular(8.r),
-            border: Border.all(color: Colors.grey.shade300),
-          ),
-          child: ListView.builder(
-            shrinkWrap: true,
-            physics: const NeverScrollableScrollPhysics(),
-            itemCount: rewardTemplates.length,
-            itemBuilder: (context, index) {
-              final r = rewardTemplates[index];
-              final selected = _selectedRewardIndexes.contains(index);
-              return CheckboxListTile(
-                dense: true,
-                controlAffinity: ListTileControlAffinity.leading,
-                value: selected,
-                title: Text(r.title, style: TextStyle(fontSize: 14.sp)),
-                subtitle: Text(
-                  '${r.costCoins} 币',
-                  style: TextStyle(fontSize: 11.sp, color: Colors.grey.shade600),
-                ),
-                onChanged: (v) => setState(() {
-                  if (v == true) {
-                    _selectedRewardIndexes.add(index);
-                  } else {
-                    _selectedRewardIndexes.remove(index);
-                  }
-                }),
-              );
-            },
-          ),
-        ),
-
-        SizedBox(height: 16.h),
-
-        // ===== 桌面快捷方式（可选） =====
-        Text(
-          '桌面快捷方式（可选）',
-          style: TextStyle(fontSize: 15.sp, fontWeight: FontWeight.bold),
-        ),
-        SizedBox(height: 4.h),
-        Text(
-          '把儿童专属入口放到手机桌面：可自定义图标（用儿童头像）和名字（用英雄昵称）。',
-          style: TextStyle(fontSize: 11.sp, color: Colors.grey.shade600),
-        ),
-        SizedBox(height: 8.h),
-        Container(
-          decoration: BoxDecoration(
-            color: Colors.white,
-            borderRadius: BorderRadius.circular(8.r),
-            border: Border.all(color: Colors.grey.shade300),
-          ),
-          child: Column(
-            children: [
-              SwitchListTile(
-                dense: true,
-                title: Text('使用儿童头像作为图标', style: TextStyle(fontSize: 14.sp)),
-                subtitle: Text(
-                  _avatarImage.isEmpty ? '尚未设置头像，将使用默认图标' : '已选择头像',
-                  style: TextStyle(fontSize: 11.sp, color: Colors.grey.shade600),
-                ),
-                value: _shortcutUseAvatar,
-                activeColor: const Color(0xFF00A0E9),
-                onChanged: (v) => setState(() => _shortcutUseAvatar = v),
-              ),
-              const Divider(height: 1),
-              SwitchListTile(
-                dense: true,
-                title: Text('使用英雄昵称作为名字', style: TextStyle(fontSize: 14.sp)),
-                subtitle: Text(
-                  '如「小明」→「小明英雄闯关冒险」',
-                  style: TextStyle(fontSize: 11.sp, color: Colors.grey.shade600),
-                ),
-                value: _shortcutUseName,
-                activeColor: const Color(0xFF00A0E9),
-                onChanged: (v) => setState(() => _shortcutUseName = v),
-              ),
-              if (!_shortcutUseName) ...[
-                const Divider(height: 1),
-                Padding(
-                  padding: EdgeInsets.symmetric(horizontal: 16.w, vertical: 8.h),
-                  child: TextField(
-                    controller: _shortcutNameController,
-                    onChanged: (v) => _shortcutCustomName = v,
-                    decoration: InputDecoration(
-                      labelText: '自定义名字（默认：小朋友冒险计划）',
-                      filled: true,
-                      fillColor: Colors.white,
-                      border: OutlineInputBorder(
-                        borderRadius: BorderRadius.circular(8.r),
-                      ),
-                    ),
-                  ),
-                ),
-              ],
+            for (int i = 0; i < 4; i++) ...[
+              _buildStepDot(i),
+              if (i < 3) Expanded(child: _buildStepLine(i)),
             ],
+          ],
+        ),
+        SizedBox(height: 10.h),
+        Text(
+          '第 ${_currentStep + 1} 步 · ${_stepTitles[_currentStep]}',
+          style: TextStyle(
+            fontSize: 18.sp,
+            fontWeight: FontWeight.bold,
+            color: UltramanTheme.deepSpace,
+          ),
+        ),
+        SizedBox(height: 4.h),
+        Text(
+          '共 4 步 · 完成${_currentStep + 1}/4',
+          style: TextStyle(fontSize: 12.sp, color: Colors.grey.shade600),
+        ),
+      ],
+    );
+  }
+
+  Widget _buildStepDot(int index) {
+    final done = index < _currentStep;
+    final active = index == _currentStep;
+    final color = done
+        ? UltramanTheme.blue
+        : active
+            ? UltramanTheme.blue
+            : Colors.grey.shade300;
+
+    return Container(
+      width: 28.w,
+      height: 28.w,
+      decoration: BoxDecoration(
+        color: done || active ? UltramanTheme.blue : Colors.grey.shade200,
+        shape: BoxShape.circle,
+        border: Border.all(color: color, width: 2),
+        boxShadow: active
+            ? [
+                BoxShadow(
+                  color: UltramanTheme.blue.withValues(alpha: 0.4),
+                  blurRadius: 8,
+                )
+              ]
+            : null,
+      ),
+      alignment: Alignment.center,
+      child: done
+          ? Icon(Icons.check, color: Colors.white, size: 16.w)
+          : Text(
+              '${index + 1}',
+              style: TextStyle(
+                color: active ? Colors.white : Colors.grey.shade600,
+                fontSize: 13.sp,
+                fontWeight: FontWeight.bold,
+              ),
+            ),
+    );
+  }
+
+  Widget _buildStepLine(int index) {
+    final done = index < _currentStep;
+    return Container(
+      height: 3,
+      color: done ? UltramanTheme.blue : Colors.grey.shade300,
+    );
+  }
+
+  /// 当前步骤内容。
+  Widget _buildStepContent() {
+    switch (_currentStep) {
+      case 0:
+        return _buildPinStep();
+      case 1:
+        return _buildProfileStep();
+      case 2:
+        return _buildThemeStep();
+      case 3:
+        return _buildPresetPicker();
+      default:
+        return const SizedBox.shrink();
+    }
+  }
+
+  // ===== 第 1 步：PIN 防卫锁 =====
+  Widget _buildPinStep() {
+    final isLandscape = MediaQuery.of(context).size.width >
+        MediaQuery.of(context).size.height;
+
+    final pinIndicator = Column(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        Icon(Icons.shield_outlined, color: UltramanTheme.blue, size: 40.r),
+        SizedBox(height: 8.h),
+        Text(
+          _pinConfirmed ? '请再次输入确认 PIN 码' : '请设置 4 位 PIN 码',
+          style: TextStyle(fontSize: 15.sp, color: Colors.grey.shade700),
+        ),
+        SizedBox(height: 16.h),
+        // PIN 圆点指示器
+        Row(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: List.generate(4, (index) {
+            final filled = _pinConfirmed
+                ? index < _confirmPin.length
+                : index < _pin.length;
+            return Container(
+              margin: const EdgeInsets.symmetric(horizontal: 8),
+              width: 16,
+              height: 16,
+              decoration: BoxDecoration(
+                shape: BoxShape.circle,
+                color: filled ? const Color(0xFF00A0E9) : Colors.grey.shade300,
+                border: Border.all(color: Colors.grey.shade400),
+              ),
+            );
+          }),
+        ),
+      ],
+    );
+
+    final keypad = PinKeypad(
+      onKeyPress: _onPinKeyPress,
+      onDelete: _onPinDelete,
+      keySize: isLandscape ? 48 : 56,
+    );
+
+    return Card(
+      elevation: 0,
+      color: Colors.white,
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16.r)),
+      child: Padding(
+        padding: EdgeInsets.all(20.w),
+        // 横屏时：左侧提示 + 右侧键盘，避免竖排溢出需要滚动。
+        child: isLandscape
+            ? Row(
+                mainAxisAlignment: MainAxisAlignment.center,
+                crossAxisAlignment: CrossAxisAlignment.center,
+                children: [
+                  Flexible(child: pinIndicator),
+                  SizedBox(width: 32.w),
+                  Flexible(flex: 2, child: keypad),
+                ],
+              )
+            : Column(
+                children: [
+                  pinIndicator,
+                  SizedBox(height: 20.h),
+                  keypad,
+                ],
+              ),
+      ),
+    );
+  }
+
+  // ===== 第 2 步：英雄档案 =====
+  Widget _buildProfileStep() {
+    return Card(
+      elevation: 0,
+      color: Colors.white,
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16.r)),
+      child: Padding(
+        padding: EdgeInsets.all(20.w),
+        child: Column(
+          children: [
+            // 头像选择 (拍照 / 上传)
+            InkWell(
+              onTap: () async {
+                final path = await pickAvatarImage(context);
+                if (path != null && mounted) {
+                  setState(() => _avatarImage = path);
+                }
+              },
+              borderRadius: BorderRadius.circular(50.r),
+              child: Stack(
+                alignment: Alignment.bottomRight,
+                children: [
+                  ChildAvatar(
+                    avatarImage: _avatarImage,
+                    name: _childNameController.text,
+                    size: 96.w,
+                  ),
+                  Container(
+                    width: 32.w,
+                    height: 32.w,
+                    decoration: const BoxDecoration(
+                      color: Color(0xFF00A0E9),
+                      shape: BoxShape.circle,
+                    ),
+                    child: Icon(Icons.camera_alt, size: 16.w, color: Colors.white),
+                  ),
+                ],
+              ),
+            ),
+            SizedBox(height: 8.h),
+            Text(
+              '点击设置头像 (可拍照或上传)',
+              style: TextStyle(fontSize: 12.sp, color: Colors.grey.shade600),
+            ),
+            SizedBox(height: 20.h),
+            TextField(
+              controller: _childNameController,
+              onChanged: (_) => setState(() {}), // 头像占位实时跟随昵称
+              decoration: InputDecoration(
+                labelText: '英雄昵称 (例：小明)',
+                prefixIcon: const Icon(Icons.badge_outlined),
+                filled: true,
+                fillColor: Colors.white,
+                border: OutlineInputBorder(borderRadius: BorderRadius.circular(8.r)),
+              ),
+            ),
+            SizedBox(height: 16.h),
+            TextField(
+              controller: _childAgeController,
+              keyboardType: TextInputType.number,
+              maxLength: 2,
+              decoration: InputDecoration(
+                labelText: '儿童年龄 (岁)',
+                helperText: '用于匹配适龄的学习题目难度',
+                prefixIcon: const Icon(Icons.cake_outlined),
+                filled: true,
+                fillColor: Colors.white,
+                border: OutlineInputBorder(borderRadius: BorderRadius.circular(8.r)),
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  // ===== 第 3 步：防卫主题 =====
+  Widget _buildThemeStep() {
+    return Card(
+      elevation: 0,
+      color: Colors.white,
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16.r)),
+      clipBehavior: Clip.antiAlias,
+      child: Padding(
+        padding: EdgeInsets.all(8.w),
+        child: _ThemeOption(
+          title: '光之守护 (奥特曼宇宙)',
+          subtitle: '包含光线攻击音效与怪兽打卡',
+          selected: _selectedTheme == 'ultraman',
+          onTap: () => setState(() => _selectedTheme = 'ultraman'),
+        ),
+      ),
+    );
+  }
+
+  // ===== 底部导航按钮 =====
+  Widget _buildNavButtons() {
+    return Row(
+      children: [
+        if (_currentStep > 0) ...[
+          Expanded(
+            child: OutlinedButton(
+              onPressed: _onBack,
+              style: OutlinedButton.styleFrom(
+                padding: EdgeInsets.symmetric(vertical: 14.h),
+                side: BorderSide(color: Colors.grey.shade400),
+                foregroundColor: Colors.grey.shade700,
+              ),
+              child: Text('上一步', style: TextStyle(fontSize: 16.sp)),
+            ),
+          ),
+          SizedBox(width: 16.w),
+        ],
+        Expanded(
+          flex: 2,
+          child: ElevatedButton(
+            onPressed: _onContinue,
+            style: ElevatedButton.styleFrom(
+              backgroundColor: UltramanTheme.blue,
+              padding: EdgeInsets.symmetric(vertical: 14.h),
+            ),
+            child: Text(
+              _currentStep == 3
+                  ? '完成并开启冒险'
+                  : (_currentStep == 0 && _pin.length == 4 && !_pinConfirmed)
+                      ? '确认 PIN 码'
+                      : '下一步',
+              style: TextStyle(fontSize: 16.sp),
+            ),
           ),
         ),
       ],
     );
   }
 
-  String _typeLabel(String type) {
-    switch (type) {
-      case 'daily':
-        return '每日';
-      case 'weekly':
-        return '每周';
-      case 'once':
-        return '单次';
-      case 'math':
-        return '数学题';
-      default:
-        return type;
+  /// 第 4 步：多选预设任务与奖励模板（分类分组 + 卡片网格）。
+  Widget _buildPresetPicker() {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        // ===== 任务模板 =====
+        _sectionHeader(
+          icon: Icons.assignment_outlined,
+          title: '选择打卡任务',
+          subtitle: '共 ${taskTemplates.length} 个模板，已选 ${_selectedTaskIndexes.length} 个',
+          onSelectAll: () => setState(() {
+            _selectedTaskIndexes
+                .addAll(List.generate(taskTemplates.length, (i) => i));
+          }),
+          onClear: () => setState(() => _selectedTaskIndexes.clear()),
+        ),
+        SizedBox(height: 8.h),
+        _buildTaskGrid(),
+        SizedBox(height: 20.h),
+
+        // ===== 奖励模板 =====
+        _sectionHeader(
+          icon: Icons.card_giftcard,
+          title: '选择奖励',
+          subtitle: '共 ${rewardTemplates.length} 个模板，已选 ${_selectedRewardIndexes.length} 个',
+          onSelectAll: () => setState(() {
+            _selectedRewardIndexes
+                .addAll(List.generate(rewardTemplates.length, (i) => i));
+          }),
+          onClear: () => setState(() => _selectedRewardIndexes.clear()),
+        ),
+        SizedBox(height: 8.h),
+        _buildRewardGrid(),
+        SizedBox(height: 20.h),
+
+        // ===== 桌面快捷方式（可选） =====
+        _buildShortcutSection(),
+      ],
+    );
+  }
+
+  /// 分组标题 + 全选/清空。
+  Widget _sectionHeader({
+    required IconData icon,
+    required String title,
+    required String subtitle,
+    required VoidCallback onSelectAll,
+    required VoidCallback onClear,
+  }) {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Row(
+          children: [
+            Icon(icon, color: UltramanTheme.blue, size: 20.r),
+            SizedBox(width: 6.w),
+            Text(
+              title,
+              style: TextStyle(fontSize: 16.sp, fontWeight: FontWeight.bold),
+            ),
+            Spacer(),
+            TextButton(
+              onPressed: onSelectAll,
+              child: Text('全选', style: TextStyle(fontSize: 13.sp)),
+            ),
+            TextButton(
+              onPressed: onClear,
+              child: Text('清空', style: TextStyle(fontSize: 13.sp)),
+            ),
+          ],
+        ),
+        Padding(
+          padding: EdgeInsets.only(left: 26.w),
+          child: Text(
+            subtitle,
+            style: TextStyle(fontSize: 12.sp, color: Colors.grey.shade600),
+          ),
+        ),
+      ],
+    );
+  }
+
+  /// 任务卡片网格（按分类分组）。
+  Widget _buildTaskGrid() {
+    final groups = _groupByCategory<TaskTemplate>(
+      taskTemplates,
+      (t) => t.category.isEmpty ? '其他' : t.category,
+    );
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        for (final entry in groups.entries) ...[
+          _categoryLabel(entry.key),
+          SizedBox(height: 6.h),
+          _buildTaskCards(entry.value),
+          SizedBox(height: 10.h),
+        ],
+      ],
+    );
+  }
+
+  /// 奖励卡片网格（按分类分组）。
+  Widget _buildRewardGrid() {
+    final groups = _groupByCategory<RewardTemplate>(
+      rewardTemplates,
+      (r) => r.category.isEmpty ? '其他' : r.category,
+    );
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        for (final entry in groups.entries) ...[
+          _categoryLabel(entry.key),
+          SizedBox(height: 6.h),
+          _buildRewardCards(entry.value),
+          SizedBox(height: 10.h),
+        ],
+      ],
+    );
+  }
+
+  /// 按分类分组，保持原顺序。
+  Map<String, List<T>> _groupByCategory<T>(
+    List<T> items,
+    String Function(T) keyOf,
+  ) {
+    final map = <String, List<T>>{};
+    for (final item in items) {
+      final key = keyOf(item);
+      map.putIfAbsent(key, () => []).add(item);
     }
+    return map;
+  }
+
+  Widget _categoryLabel(String label) {
+    return Row(
+      children: [
+        Container(
+          width: 4.w,
+          height: 14.h,
+          decoration: BoxDecoration(
+            color: UltramanTheme.gold,
+            borderRadius: BorderRadius.circular(2),
+          ),
+        ),
+        SizedBox(width: 6.w),
+        Text(
+          label,
+          style: TextStyle(
+            fontSize: 14.sp,
+            fontWeight: FontWeight.w600,
+            color: Colors.grey.shade700,
+          ),
+        ),
+      ],
+    );
+  }
+
+  /// 任务卡片：用 Wrap 布局，卡片宽度按屏宽自适应，高度随内容，避免横屏溢出。
+  Widget _buildTaskCards(List<TaskTemplate> templates) {
+    final itemWidth = _cardItemWidth();
+    return Wrap(
+      spacing: 10.w,
+      runSpacing: 10.h,
+      children: [
+        for (final t in templates)
+          SizedBox(
+            width: itemWidth,
+            child: _buildTaskCardItem(t),
+          ),
+      ],
+    );
+  }
+
+  Widget _buildTaskCardItem(TaskTemplate t) {
+    final globalIndex = taskTemplates.indexOf(t);
+    final selected = _selectedTaskIndexes.contains(globalIndex);
+    return _SelectableCard(
+      selected: selected,
+      onTap: () => setState(() {
+        if (selected) {
+          _selectedTaskIndexes.remove(globalIndex);
+        } else {
+          _selectedTaskIndexes.add(globalIndex);
+        }
+      }),
+      child: Padding(
+        padding: EdgeInsets.symmetric(vertical: 10.h),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            MonsterAvatar(iconName: t.iconName, size: 36),
+            SizedBox(height: 8.h),
+            Text(
+              t.title,
+              style: TextStyle(
+                fontSize: 13.sp,
+                fontWeight: FontWeight.w600,
+              ),
+              textAlign: TextAlign.center,
+              maxLines: 2,
+              overflow: TextOverflow.ellipsis,
+            ),
+            SizedBox(height: 4.h),
+            Text(
+              '${t.rewardCoins}币/${t.rewardExp}EXP',
+              style: TextStyle(
+                fontSize: 11.sp,
+                color: UltramanTheme.gold,
+                fontWeight: FontWeight.w600,
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  /// 奖励卡片：用 Wrap 布局，卡片宽度按屏宽自适应，高度随内容，避免横屏溢出。
+  Widget _buildRewardCards(List<RewardTemplate> templates) {
+    final itemWidth = _cardItemWidth();
+    return Wrap(
+      spacing: 10.w,
+      runSpacing: 10.h,
+      children: [
+        for (final r in templates)
+          SizedBox(
+            width: itemWidth,
+            child: _buildRewardCardItem(r),
+          ),
+      ],
+    );
+  }
+
+  Widget _buildRewardCardItem(RewardTemplate r) {
+    final globalIndex = rewardTemplates.indexOf(r);
+    final selected = _selectedRewardIndexes.contains(globalIndex);
+    return _SelectableCard(
+      selected: selected,
+      onTap: () => setState(() {
+        if (selected) {
+          _selectedRewardIndexes.remove(globalIndex);
+        } else {
+          _selectedRewardIndexes.add(globalIndex);
+        }
+      }),
+      child: Padding(
+        padding: EdgeInsets.symmetric(vertical: 10.h),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            Icon(Icons.card_giftcard, color: UltramanTheme.gold, size: 32.r),
+            SizedBox(height: 8.h),
+            Text(
+              r.title,
+              style: TextStyle(
+                fontSize: 13.sp,
+                fontWeight: FontWeight.w600,
+              ),
+              textAlign: TextAlign.center,
+              maxLines: 2,
+              overflow: TextOverflow.ellipsis,
+            ),
+            SizedBox(height: 4.h),
+            Text(
+              '${r.costCoins} 币',
+              style: TextStyle(
+                fontSize: 11.sp,
+                color: UltramanTheme.gold,
+                fontWeight: FontWeight.w600,
+              ),
+            ),
+            // 需审核标记
+            if (r.requireApproval) ...[
+              SizedBox(height: 3.h),
+              Container(
+                padding: EdgeInsets.symmetric(horizontal: 5.w, vertical: 1.h),
+                decoration: BoxDecoration(
+                  color: Colors.orange.withValues(alpha: 0.15),
+                  borderRadius: BorderRadius.circular(4),
+                ),
+                child: Text(
+                  '需审核',
+                  style: TextStyle(
+                    fontSize: 9.sp,
+                    color: Colors.orange,
+                    fontWeight: FontWeight.w600,
+                  ),
+                ),
+              ),
+            ],
+          ],
+        ),
+      ),
+    );
+  }
+
+  /// 计算每个卡片项的宽度（Wrap 布局用）。
+  double _cardItemWidth() {
+    final width = MediaQuery.of(context).size.width;
+    final contentWidth = width > 760 ? 680.0 : (width - 40);
+    final count = _crossAxisCount();
+    // (总宽 - 间距) / 列数
+    return (contentWidth - (count - 1) * 10.w) / count;
+  }
+
+  /// 按屏幕宽度计算卡片列数（平板/横屏自适应）。
+  int _crossAxisCount() {
+    final width = MediaQuery.of(context).size.width;
+    // 内容区最大 720，去掉左右 padding 40。
+    final contentWidth = width > 760 ? 680.0 : (width - 40);
+    if (contentWidth >= 600) return 4;
+    if (contentWidth >= 400) return 3;
+    return 2;
+  }
+
+  // ===== 桌面快捷方式提示 =====
+  Widget _buildShortcutSection() {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Row(
+          children: [
+            Icon(Icons.add_to_home_screen, color: UltramanTheme.blue, size: 20.r),
+            SizedBox(width: 6.w),
+            Text(
+              '桌面快捷方式',
+              style: TextStyle(fontSize: 16.sp, fontWeight: FontWeight.bold),
+            ),
+          ],
+        ),
+        SizedBox(height: 4.h),
+        Padding(
+          padding: EdgeInsets.only(left: 26.w),
+          child: Text(
+            '自定义 APP 名字和图标，请在家长控制台 -> 设置 -> 桌面快捷方式 中开启。',
+            style: TextStyle(fontSize: 12.sp, color: Colors.grey.shade600),
+          ),
+        ),
+      ],
+    );
+  }
+}
+
+/// 可选中卡片（勾选态 + 主题色描边 + 右上角勾选标记）。
+class _SelectableCard extends StatelessWidget {
+  final bool selected;
+  final VoidCallback onTap;
+  final Widget child;
+
+  const _SelectableCard({
+    required this.selected,
+    required this.onTap,
+    required this.child,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return GestureDetector(
+      onTap: onTap,
+      child: Container(
+        decoration: BoxDecoration(
+          color: selected
+              ? UltramanTheme.blue.withValues(alpha: 0.08)
+              : Colors.white,
+          borderRadius: BorderRadius.circular(12.r),
+          border: Border.all(
+            color: selected ? UltramanTheme.blue : Colors.grey.shade300,
+            width: selected ? 2 : 1,
+          ),
+        ),
+        child: Stack(
+          children: [
+            Center(child: Padding(padding: EdgeInsets.all(6.w), child: child)),
+            // 右上角勾选标记
+            Positioned(
+              top: 4.w,
+              right: 4.w,
+              child: Container(
+                width: 18.w,
+                height: 18.w,
+                decoration: BoxDecoration(
+                  color: selected ? UltramanTheme.blue : Colors.grey.shade300,
+                  shape: BoxShape.circle,
+                ),
+                child: selected
+                    ? Icon(Icons.check, color: Colors.white, size: 12.w)
+                    : null,
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+/// 主题选项卡片（单选）。
+class _ThemeOption extends StatelessWidget {
+  final String title;
+  final String subtitle;
+  final bool selected;
+  final VoidCallback onTap;
+
+  const _ThemeOption({
+    required this.title,
+    required this.subtitle,
+    required this.selected,
+    required this.onTap,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return InkWell(
+      onTap: onTap,
+      borderRadius: BorderRadius.circular(12.r),
+      child: Container(
+        padding: EdgeInsets.all(16.w),
+        decoration: BoxDecoration(
+          color: selected
+              ? UltramanTheme.blue.withValues(alpha: 0.08)
+              : Colors.white,
+          borderRadius: BorderRadius.circular(12.r),
+          border: Border.all(
+            color: selected ? UltramanTheme.blue : Colors.grey.shade300,
+            width: selected ? 2 : 1,
+          ),
+        ),
+        child: Row(
+          children: [
+            Container(
+              width: 48.w,
+              height: 48.w,
+              decoration: BoxDecoration(
+                color: UltramanTheme.deepSpace,
+                borderRadius: BorderRadius.circular(10.r),
+              ),
+              child: Center(
+                child: Icon(Icons.shield_outlined,
+                    color: UltramanTheme.gold, size: 26.r),
+              ),
+            ),
+            SizedBox(width: 12.w),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(title,
+                      style: TextStyle(
+                          fontSize: 16.sp, fontWeight: FontWeight.bold)),
+                  SizedBox(height: 2.h),
+                  Text(subtitle,
+                      style: TextStyle(
+                          fontSize: 13.sp, color: Colors.grey.shade600)),
+                ],
+              ),
+            ),
+            Icon(
+              selected ? Icons.radio_button_checked : Icons.radio_button_off,
+              color: selected ? UltramanTheme.blue : Colors.grey.shade400,
+              size: 22.r,
+            ),
+          ],
+        ),
+      ),
+    );
   }
 }

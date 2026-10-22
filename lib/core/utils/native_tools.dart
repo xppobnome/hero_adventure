@@ -54,4 +54,27 @@ class NativeTools {
       return false;
     }
   }
+
+  /// 打开本应用的系统设置详情页（用于手动开启「创建桌面快捷方式」权限）。
+  static Future<bool> openAppSettings() async {
+    try {
+      final ok = await _channel.invokeMethod<bool>('openAppSettings');
+      return ok ?? false;
+    } catch (_) {
+      return false;
+    }
+  }
+
+  /// 安装本地 APK（自动更新用）。
+  ///
+  /// [path] APK 文件绝对路径。返回 true 表示已触发系统安装器；
+  /// false 或抛异常表示失败（可能是权限未开启或文件不存在）。
+  static Future<bool> installApk(String path) async {
+    try {
+      final ok = await _channel.invokeMethod<bool>('installApk', {'path': path});
+      return ok ?? false;
+    } catch (_) {
+      return false;
+    }
+  }
 }

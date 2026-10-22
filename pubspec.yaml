@@ -91,6 +91,7 @@ flutter:
     - assets/audio/error.mp3
     - assets/audio/transform.mp3
     - assets/audio/victory.mp3
+    - assets/audio/启动音效.mp3
     - assets/heroes/
     - assets/heroes/ace/
     - assets/heroes/ace/ace_skill.mp3

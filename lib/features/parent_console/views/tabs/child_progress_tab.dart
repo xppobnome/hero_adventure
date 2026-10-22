@@ -21,32 +21,41 @@ class ChildProgressTab extends ConsumerWidget {
       return const Center(child: Text('暂无儿童档案', style: TextStyle(color: Colors.grey)));
     }
 
-    return ListView.builder(
-      padding: EdgeInsets.all(16.w),
-      itemCount: family.children.length,
-      itemBuilder: (context, index) {
-        final child = family.children[index];
-        return Card(
-          margin: EdgeInsets.only(bottom: 16.h),
-          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12.r)),
-          child: Padding(
-            padding: EdgeInsets.all(12.w),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(
-                  '${child.name} 的闯关进度',
-                  style: TextStyle(fontSize: 17.sp, fontWeight: FontWeight.bold),
+    return Center(
+      child: ConstrainedBox(
+        constraints: const BoxConstraints(maxWidth: 800),
+        child: ListView.builder(
+          padding: EdgeInsets.all(16.w),
+          itemCount: family.children.length,
+          itemBuilder: (context, index) {
+            final child = family.children[index];
+            return Card(
+              margin: EdgeInsets.only(bottom: 16.h),
+              elevation: 0,
+              shape: RoundedRectangleBorder(
+                borderRadius: BorderRadius.circular(14.r),
+                side: BorderSide(color: Colors.grey.shade200),
+              ),
+              child: Padding(
+                padding: EdgeInsets.all(12.w),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      '${child.name} 的闯关进度',
+                      style: TextStyle(fontSize: 17.sp, fontWeight: FontWeight.bold),
+                    ),
+                    SizedBox(height: 8.h),
+                    ChildDashboard(childId: child.id),
+                    SizedBox(height: 8.h),
+                    _buildProgressDetail(ref, child.id),
+                  ],
                 ),
-                SizedBox(height: 8.h),
-                ChildDashboard(childId: child.id),
-                SizedBox(height: 8.h),
-                _buildProgressDetail(ref, child.id),
-              ],
-            ),
-          ),
-        );
-      },
+              ),
+            );
+          },
+        ),
+      ),
     );
   }
 
@@ -67,10 +76,11 @@ class ChildProgressTab extends ConsumerWidget {
           final pending = CheckInLogic.isPending(
             task: task, childId: childId, date: today, records: records,
           );
-          // 打卡一周任务额外显示累计进度
-          final bool isCheckinWeek = task.type == 'checkin_week';
-          final String weekProgress = isCheckinWeek
-              ? CheckInLogic.checkinWeekProgress(task: task, childId: childId, records: records)
+          // 打卡一周 / 连续30天任务额外显示累计进度
+          final bool isCheckinStreak =
+              task.type == 'checkin_week' || task.type == 'checkin_month';
+          final String streakProgress = isCheckinStreak
+              ? CheckInLogic.checkinProgress(task: task, childId: childId, records: records)
               : '';
           return Padding(
             padding: EdgeInsets.symmetric(vertical: 4.h),
@@ -92,8 +102,8 @@ class ChildProgressTab extends ConsumerWidget {
                     children: [
                       Text(task.title, style: TextStyle(fontSize: 14.sp)),
                       Text(
-                        isCheckinWeek
-                            ? '周期: 打卡一周 · 进度 $weekProgress'
+                        isCheckinStreak
+                            ? '周期: ${task.typeLabel} · 进度 $streakProgress'
                             : '周期: ${task.cycleDescription}',
                         style: TextStyle(fontSize: 11.sp, color: Colors.grey.shade600),
                       ),

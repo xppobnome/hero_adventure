@@ -48,12 +48,14 @@ class _AppUpdateSettingsCardState extends ConsumerState<AppUpdateSettingsCard> {
             ),
             value: autoCheck,
             activeColor: const Color(0xFF00A0E9),
-            onChanged: permanentlyIgnored
-                ? null // 永久忽略时禁用开关，需先取消永久忽略
-                : (v) async {
-                    await storage.setUpdateAutoCheck(v);
-                    if (mounted) setState(() {});
-                  },
+            onChanged: (v) async {
+              await storage.setUpdateAutoCheck(v);
+              // 重新开启自动检查时，同时清除「永久忽略」标记，否则仍不会弹更新。
+              if (v) {
+                await storage.setUpdatePermanentIgnored(false);
+              }
+              if (mounted) setState(() {});
+            },
           ),
           const Divider(height: 1),
           ListTile(
@@ -70,7 +72,7 @@ class _AppUpdateSettingsCardState extends ConsumerState<AppUpdateSettingsCard> {
               style: TextStyle(fontSize: 16.sp, fontWeight: FontWeight.bold),
             ),
             subtitle: Text(
-              '当前：${UpdateService.sourceLabels[storage.getUpdateSource()] ?? 'GitHub'}',
+              '当前：${UpdateService.sourceLabels[storage.getUpdateSource()] ?? 'Gitee'}',
               style: TextStyle(fontSize: 14.sp),
             ),
             trailing: const Icon(Icons.arrow_forward_ios, size: 16),

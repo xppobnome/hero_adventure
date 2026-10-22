@@ -33,10 +33,19 @@ class _MathQuizViewState extends ConsumerState<MathQuizView> {
   bool _showRewardAnim = false; // 达标后展示奖励动画
   bool _rewardGranted = false; // 本次提交是否实际发放了奖励 (已完成后再答题不发)
 
+  // 题目列表滚动控制器：切换上/下一题时自动滚动到聚焦题。
+  final ScrollController _scrollController = ScrollController();
+
   @override
   void initState() {
     super.initState();
     _generateQuestions();
+  }
+
+  @override
+  void dispose() {
+    _scrollController.dispose();
+    super.dispose();
   }
 
   /// 生成题目并重置作答状态。
@@ -81,6 +90,25 @@ class _MathQuizViewState extends ConsumerState<MathQuizView> {
         }
       }
     });
+    // 切换题目后，滚动列表让聚焦题可见（绑定滑动）。
+    if (key == 'next' || key == 'prev') {
+      _scrollToFocus();
+    }
+  }
+
+  /// 滚动题目列表，使当前聚焦题出现在可视区域（估算每张卡片高度）。
+  void _scrollToFocus() {
+    if (!_scrollController.hasClients) return;
+    final itemHeight = 78.0; // 单张卡片大致高度
+    final target = _focusedIndex * itemHeight;
+    final viewport = _scrollController.position.viewportDimension;
+    final maxScroll = _scrollController.position.maxScrollExtent;
+    final clamped = target.clamp(0.0, maxScroll);
+    _scrollController.animateTo(
+      clamped,
+      duration: const Duration(milliseconds: 250),
+      curve: Curves.easeOut,
+    );
   }
 
   /// 计算正确题数。
@@ -183,6 +211,9 @@ class _MathQuizViewState extends ConsumerState<MathQuizView> {
             ? '减法'
             : '加减混合';
 
+    final isLandscape =
+        MediaQuery.of(context).size.width > MediaQuery.of(context).size.height;
+
     return Scaffold(
       appBar: AppBar(
         title: const Text('数学闯关', style: TextStyle(fontSize: 18)),
@@ -193,56 +224,10 @@ class _MathQuizViewState extends ConsumerState<MathQuizView> {
           const Positioned.fill(child: UltramanStarfield()),
           Center(
             child: ConstrainedBox(
-              constraints: const BoxConstraints(maxWidth: 720),
-              child: Column(
-                children: [
-                  // 顶部说明
-                  Padding(
-                    padding: const EdgeInsets.all(16),
-                    child: Container(
-                      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
-                      decoration: BoxDecoration(
-                        color: Colors.white.withValues(alpha: 0.1),
-                        borderRadius: BorderRadius.circular(12),
-                      ),
-                      child: Row(
-                        children: [
-                          const Icon(Icons.calculate, color: UltramanTheme.gold, size: 22),
-                          const SizedBox(width: 8),
-                          Expanded(
-                            child: Text(
-                              '${widget.task.mathRange}以内$opLabel · 共 ${_questions.length} 题 · 答对 ${widget.task.mathPassPercent}% 得奖励',
-                              style: const TextStyle(
-                                color: Colors.white,
-                                fontSize: 13,
-                                fontWeight: FontWeight.bold,
-                              ),
-                            ),
-                          ),
-                        ],
-                      ),
-                    ),
-                  ),
-                  // 题目列表
-                  Expanded(
-                    child: ListView.builder(
-                      padding: const EdgeInsets.symmetric(horizontal: 16),
-                      itemCount: _questions.length,
-                      itemBuilder: (context, index) {
-                        return _buildQuestionCard(index);
-                      },
-                    ),
-                  ),
-                  // 自定义数字键盘 + 底部按钮
-                  SafeArea(
-                    top: false,
-                    child: Padding(
-                      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-                      child: _submitted ? _buildResultBar() : _buildNumpad(),
-                    ),
-                  ),
-                ],
-              ),
+              constraints: BoxConstraints(maxWidth: isLandscape ? 1080 : 720),
+              child: isLandscape
+                  ? _buildLandscapeLayout(opLabel)
+                  : _buildPortraitLayout(opLabel),
             ),
           ),
           // 奖励动画覆盖层 (居中庆祝动画)
@@ -259,6 +244,101 @@ class _MathQuizViewState extends ConsumerState<MathQuizView> {
               ),
             ),
         ],
+      ),
+    );
+  }
+
+  /// 竖屏布局：说明 + 题目列表 + 底部键盘（原有纵向结构）。
+  Widget _buildPortraitLayout(String opLabel) {
+    return Column(
+      children: [
+        _buildHeader(opLabel),
+        Expanded(
+          child: ListView.builder(
+            controller: _scrollController,
+            padding: const EdgeInsets.symmetric(horizontal: 16),
+            itemCount: _questions.length,
+            itemBuilder: (context, index) => _buildQuestionCard(index),
+          ),
+        ),
+        SafeArea(
+          top: false,
+          child: Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+            child: _submitted ? _buildResultBar() : _buildNumpad(),
+          ),
+        ),
+      ],
+    );
+  }
+
+  /// 横屏布局：左侧题目列表，右侧数字键盘（充分利用横向空间，免滚动看全）。
+  Widget _buildLandscapeLayout(String opLabel) {
+    return Padding(
+      padding: const EdgeInsets.all(16),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          // 左侧：说明 + 题目列表
+          Expanded(
+            flex: 3,
+            child: Column(
+              children: [
+                _buildHeader(opLabel),
+                Expanded(
+                  child: ListView.builder(
+                    controller: _scrollController,
+                    itemCount: _questions.length,
+                    itemBuilder: (context, index) => _buildQuestionCard(index),
+                  ),
+                ),
+              ],
+            ),
+          ),
+          const SizedBox(width: 16),
+          // 右侧：数字键盘 + 结果栏
+          Expanded(
+            flex: 2,
+            child: SafeArea(
+              top: false,
+              child: Center(
+                child: SingleChildScrollView(
+                  child: _submitted ? _buildResultBar() : _buildNumpad(),
+                ),
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  /// 顶部说明。
+  Widget _buildHeader(String opLabel) {
+    return Padding(
+      padding: const EdgeInsets.all(16),
+      child: Container(
+        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+        decoration: BoxDecoration(
+          color: Colors.white.withValues(alpha: 0.1),
+          borderRadius: BorderRadius.circular(12),
+        ),
+        child: Row(
+          children: [
+            const Icon(Icons.calculate, color: UltramanTheme.gold, size: 22),
+            const SizedBox(width: 8),
+            Expanded(
+              child: Text(
+                '${widget.task.mathRange}以内$opLabel · 共 ${_questions.length} 题 · 答对 ${widget.task.mathPassPercent}% 得奖励',
+                style: const TextStyle(
+                  color: Colors.white,
+                  fontSize: 13,
+                  fontWeight: FontWeight.bold,
+                ),
+              ),
+            ),
+          ],
+        ),
       ),
     );
   }
