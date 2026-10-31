@@ -101,3 +101,9 @@ const Map<String, String> pinyinInitialPhoneme = {
   'j': 'dʒ', 'q': 'tʃ', 'x': 'ʃ',
   'zh': 'dʒ', 'ch': 'tʃ', 'sh': 'ʃ', 'r': 'r', 'z': 'ts', 'c': 'ts',
 };
+
+/// 声母发音模式开关 (便于随时在两种方案间切换)：
+/// - false (默认)：声母用**汉字呼读音**朗读 (中文模型，如 f→「佛」、b→「波」)；
+/// - true ：声母用**纯辅音**朗读 (英文 Piper 模型按 eSpeak 音素合成，如 f→/f/)。
+/// 用户反馈先采用文字发音，听感不对再切回纯辅音，故默认 false。
+const bool kShengmuPureConsonant = false;

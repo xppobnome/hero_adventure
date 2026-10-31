@@ -59,8 +59,8 @@ class LearnDisplay {
 
   /// 朗读分段：按学科顺序返回 [(文本, 学科)]。
   /// - 识字：单字 → 组词 (均用中文模型)；
-  /// - 拼音：声母用纯辅音音素 (phoneme，英文模型按 eSpeak 音素直接合成，f→/f/ 而非「佛」)；
-  ///   韵母 / 整体认读用中文模型朗读整音节 (呼读音 / 音节，内容已正确)；
+  /// - 拼音：声母 / 韵母 / 整体认读统一用中文模型朗读汉字呼读音
+  ///   (speakText 已是对应汉字，如 f→「佛」、a→「啊」；声母纯辅音方案见 kShengmuPureConsonant)；
   /// - 英文：单词 (英文模型) → 中文释义 (中文模型)。
   static List<(String, String)> speakSegments(LearnItem item) {
     switch (item.subject) {
@@ -70,14 +70,15 @@ class LearnDisplay {
         if (w != null) segs.add((w, LearnSubjects.hanzi));
         return segs;
       case LearnSubjects.pinyin:
-        // 声母：纯辅音音素，保证发音内容 = 声母本音 (如 f→/f/)。
-        if (item.category == 'shengmu') {
+        // 声母默认汉字呼读音 (中文模型，f→「佛」、b→「波」)；
+        // kShengmuPureConsonant=true 时改回纯辅音 (英文模型音素合成，f→/f/)。
+        if (kShengmuPureConsonant && item.category == 'shengmu') {
           final ph = pinyinInitialPhoneme[item.displayText];
           if (ph != null && ph.isNotEmpty) {
             return [(ph, LearnSubjects.phoneme)];
           }
         }
-        // 韵母 / 整体认读 / 兜底：中文模型朗读整音节。
+        // 声母(文字模式) / 韵母 / 整体认读：中文模型朗读汉字呼读音 (speakText 已是对应汉字)。
         return [(item.speakText, LearnSubjects.hanzi)];
       case LearnSubjects.english:
         return [

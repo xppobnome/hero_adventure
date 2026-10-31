@@ -45,7 +45,7 @@ A cross-platform (phone / tablet) **family habit-building app for children**. Da
 ### Child Learning Read-Along System (Offline TTS)
 - Three subjects: **Pinyin / Chinese characters / English**, unified `LearnItem` word bank + `Task` config.
 - **Fully offline neural TTS** (Sherpa-ONNX Chinese VITS + English Piper dual models) — **Sherpa end-to-end**, stable single-character / single-word reading with no network.
-- **Pinyin initials are read as pure consonants** (e.g. `f` → /f/, not the traditional "呼读音" syllable "佛 fo"): initials are synthesized by the English Piper model directly from eSpeak phonemes, so the spoken content never drifts. Finals / whole-syllable (整体认读) items still use the Chinese model for the full syllable.
+- **Pinyin initials / finals / whole-syllable items are read as Chinese "呼读音" characters** (Chinese model reads the corresponding character, e.g. `f` → "佛", `b` → "波", `a` → "啊"). The pure-consonant scheme for initials (`f` → /f/, English Piper phoneme synthesis) is kept as a toggle `kShengmuPureConsonant` (`pinyin_data.dart`, default `false`).
 - Chinese: also reads the example word and shows its tone-marked pinyin above the word. English: also reads the Chinese meaning with IPA (American) + pinyin of the meaning.
 - **Instant "Listen once"**: on page entry the app pre-synthesizes **all** read-aloud segments into cache (+ in-flight de-duplication), so tapping plays immediately; the speaker icon animates while playing / loading.
 - The learning tasks (Pinyin / Chinese / English) and their check-in records are all included in the full backup (see Data Sync) — survive device switch / restore.
