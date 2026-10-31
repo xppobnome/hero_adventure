@@ -147,12 +147,25 @@ class _LearnQuizViewState extends ConsumerState<LearnQuizView> {
   }
 
   /// 点「听一遍」：软件朗读当前条目 (中文补读词语，英文补读中文释义)。
+  ///
+  /// 小喇叭动效 (active 声波) 仅持续 1 秒即结束，不随朗读时长变化；
+  /// 朗读音频在后台独立播放，即便动效已结束仍继续发声。
   Future<void> _speak() async {
     if (_finished || _items.isEmpty) return;
     // 捕获本次朗读对应的条目索引，播放结束后校验索引未变再恢复视觉，
     // 避免播放期间儿童点「下一题」导致新条目状态被误重置。
     final index = _currentIndex;
     setState(() => _statuses[index] = LearnCardStatus.playing);
+    // 小喇叭动效仅持续 1 秒：到时若本条仍在播放则切回 idle (动画停止)。
+    unawaited(
+      Future.delayed(const Duration(seconds: 1)).then((_) {
+        if (mounted &&
+            _currentIndex == index &&
+            _statuses[index] == LearnCardStatus.playing) {
+          setState(() => _statuses[index] = LearnCardStatus.idle);
+        }
+      }),
+    );
     final item = _items[index];
     // 按学科拆成朗读分段：中文补读词语，英文补读中文释义。
     final segments = LearnDisplay.speakSegments(item);
@@ -160,9 +173,6 @@ class _LearnQuizViewState extends ConsumerState<LearnQuizView> {
       await SpeechService.instance.speak(seg.$1, subject: seg.$2);
       if (!mounted || _currentIndex != index) return;
     }
-    if (!mounted || _currentIndex != index) return;
-    // 播放结束恢复初始状态。
-    setState(() => _statuses[index] = LearnCardStatus.idle);
   }
 
   /// 下一题：到末尾则结算。
@@ -343,7 +353,8 @@ class _LearnQuizViewState extends ConsumerState<LearnQuizView> {
 
   /// 拼音模块：纯视频播放页 (替代 TTS 朗读)。
   ///
-  /// 加载完成后自动播放，可暂停/继续、拖拽进度；看完或点「完成学习」即触发发奖。
+  /// 加载完成后自动播放，可暂停/继续、拖拽进度；视频**完整播放到结尾**即触发发奖
+  /// (_finish 内部已防重入)。底部不再保留「完成学习」按钮，避免误触提前发奖。
   Widget _buildPinyinVideoLayout() {
     return Padding(
       padding: const EdgeInsets.all(16),
@@ -361,33 +372,17 @@ class _LearnQuizViewState extends ConsumerState<LearnQuizView> {
           ),
           const SizedBox(height: 12),
           _videoSourceNote(),
-          const SizedBox(height: 12),
-          SizedBox(
-            width: double.infinity,
-            child: ElevatedButton(
-              onPressed: _finished ? null : _finish,
-              style: ElevatedButton.styleFrom(
-                backgroundColor: UltramanTheme.blue,
-                foregroundColor: Colors.white,
-                padding: const EdgeInsets.symmetric(vertical: 14),
-                shape: RoundedRectangleBorder(
-                  borderRadius: BorderRadius.circular(14),
-                ),
-              ),
-              child: const Text('完成学习'),
-            ),
-          ),
         ],
       ),
     );
   }
 
-  /// 视频来源小字备注 (侵权可撤销)：点击打开 B 站原视频。
+  /// 视频来源小字备注：点击打开 B 站原视频 (视频来自 up 主「续命星期五」)。
   Widget _videoSourceNote() {
     return InkWell(
       onTap: _openSourceLink,
       child: const Text(
-        '视频来源：哔哩哔哩 BV1Fe411N7my（点击打开，侵权可撤销）',
+        '视频来自B站up主续命星期五',
         style: TextStyle(color: Colors.white54, fontSize: 11),
         textAlign: TextAlign.center,
       ),

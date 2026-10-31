@@ -53,6 +53,74 @@ class _PinyinVideoPlayerState extends State<PinyinVideoPlayer> {
     if (mounted) setState(() {});
   }
 
+  /// 自定义加粗进度条：轨道 16px、手柄 18px、可点击/拖拽 seek。
+  ///
+  /// 通过 [VideoScrubber] 复用官方手势处理 (拖拽时自动暂停、松手恢复播放)，
+  /// 内部用 [AnimatedBuilder] 跟随控制器刷新进度。
+  Widget _buildBigProgress() {
+    final color = UltramanTheme.gold;
+    return VideoScrubber(
+      controller: _controller,
+      child: AnimatedBuilder(
+        animation: _controller,
+        builder: (context, _) {
+          final position = _controller.value.position;
+          final duration = _controller.value.duration;
+          final total = duration.inMilliseconds;
+          final value = total > 0
+              ? (position.inMilliseconds / total).clamp(0.0, 1.0)
+              : 0.0;
+          return LayoutBuilder(
+            builder: (context, constraints) {
+              final width = constraints.maxWidth;
+              final handleLeft = (width * value - 9).clamp(0.0, width - 18);
+              return SizedBox(
+                height: 36,
+                child: Stack(
+                  alignment: Alignment.centerLeft,
+                  children: [
+                    // 背景轨道
+                    Container(
+                      height: 16,
+                      decoration: BoxDecoration(
+                        color: Colors.white24,
+                        borderRadius: BorderRadius.circular(8),
+                      ),
+                    ),
+                    // 已播放进度
+                    FractionallySizedBox(
+                      widthFactor: value,
+                      child: Container(
+                        height: 16,
+                        decoration: BoxDecoration(
+                          color: color,
+                          borderRadius: BorderRadius.circular(8),
+                        ),
+                      ),
+                    ),
+                    // 拖拽手柄
+                    Positioned(
+                      left: handleLeft,
+                      child: Container(
+                        width: 18,
+                        height: 18,
+                        decoration: BoxDecoration(
+                          color: color,
+                          shape: BoxShape.circle,
+                          border: Border.all(color: Colors.white, width: 2),
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
+              );
+            },
+          );
+        },
+      ),
+    );
+  }
+
   @override
   void dispose() {
     _controller.removeListener(_onStateChanged);
@@ -93,20 +161,14 @@ class _PinyinVideoPlayerState extends State<PinyinVideoPlayer> {
           ),
         ),
         const SizedBox(height: 8),
-        VideoProgressIndicator(
-          _controller,
-          allowScrubbing: true,
-          padding: const EdgeInsets.symmetric(horizontal: 4),
-          colors: VideoProgressColors(
-            playedColor: color,
-            bufferedColor: color.withValues(alpha: 0.4),
-            backgroundColor: Colors.white24,
-          ),
-        ),
+        // 自定义加粗进度条 (video_player 2.14 的 VideoProgressIndicator 不支持
+        // barHeight/handleHeight，这里用 VideoScrubber 包装自绘，便于放大并支持拖拽)。
+        _buildBigProgress(),
         Row(
           mainAxisAlignment: MainAxisAlignment.center,
           children: [
             IconButton(
+              iconSize: 36,
               icon: Icon(
                 playing ? Icons.pause : Icons.play_arrow,
                 color: color,

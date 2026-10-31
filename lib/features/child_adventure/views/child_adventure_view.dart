@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -14,8 +15,11 @@ import '../../../domain/providers/family_provider.dart';
 import '../../../domain/providers/task_provider.dart';
 import '../../../domain/providers/check_in_provider.dart';
 import '../../../domain/providers/theme_provider.dart';
+import '../../../core/services/speech_service.dart';
+import '../../../data/learn_content/learn_display.dart';
 import '../../../data/learn_content/learn_item.dart';
 import '../../../data/models/task.dart';
+import '../../../domain/learn_quiz.dart';
 import '../widgets/child_dashboard.dart';
 import '../widgets/level_map.dart';
 import 'hero_gallery_view.dart';
@@ -289,6 +293,48 @@ class _ChildAdventureViewState extends ConsumerState<ChildAdventureView> {
     debugPrint('[PIN解除] popUntil 前 canPop=${navigator.canPop()}');
     navigator.popUntil((route) => route.isFirst);
     debugPrint('[PIN解除] popUntil 完成');
+  }
+
+  @override
+  void initState() {
+    super.initState();
+    // 进入「地球防卫图」即后台预缓存识字/英语 TTS，使儿童进入闯关页点击
+    // 「听一遍」时即时发声、零延迟 (拼音模块为视频，无需预缓存)。
+    _prefetchLearnTts();
+  }
+
+  /// 后台预缓存识字/英语学科的 TTS (模型预热 + 全条目预合成)。
+  ///
+  /// 在儿童端主界面 (地球防卫图) 加载时触发：先把离线 Sherpa 中英双模型
+  /// 预热加载，再逐任务预合成全部朗读分段并缓存。进入跟读页点击「听一遍」
+  /// 即可瞬时播放，彻底消除首点击延迟。
+  Future<void> _prefetchLearnTts() async {
+    final tasks = ref.read(taskProvider);
+    final learnTasks = tasks.where(
+      (t) =>
+          t.isLearnTask &&
+          (t.learnSubject == LearnSubjects.hanzi ||
+              t.learnSubject == LearnSubjects.english),
+    );
+    if (learnTasks.isEmpty) return;
+    // 先预热离线 TTS 模型 (加载中英双模型)，再后台预合成各任务的全部朗读分段
+    // (prefetch 自带在途去重，重复派发不会并发重复合成)。
+    unawaited(SpeechService.instance.warmUp().then((ok) {
+      if (!ok || !mounted) return;
+      for (final task in learnTasks) {
+        final items = LearnQuizGenerator(
+          subject: task.learnSubject,
+          scope: task.learnScope,
+          count: task.learnCount,
+          ordered: task.learnOrdered,
+        ).generate();
+        for (final item in items) {
+          for (final seg in LearnDisplay.speakSegments(item)) {
+            SpeechService.instance.prefetch(seg.$1, subject: seg.$2);
+          }
+        }
+      }
+    }));
   }
 
   @override
