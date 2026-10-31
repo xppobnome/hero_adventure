@@ -1,7 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:video_player/video_player.dart';
 
-import '../../../core/widgets/ultraman_visuals.dart';
+import '../../../domain/providers/theme_provider.dart';
 
 /// 拼音跟读教学视频播放器 (资源内置，asset 方式加载，无需联网)。
 ///
