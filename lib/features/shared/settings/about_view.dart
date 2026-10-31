@@ -22,8 +22,8 @@ class AboutView extends ConsumerStatefulWidget {
 }
 
 class _AboutViewState extends ConsumerState<AboutView> {
-  String _version = '1.0.0';
-  String _buildNumber = '1';
+  String _version = '1.0.1';
+  String _buildNumber = '2';
   int _versionTapCount = 0; // 连续点击软件版本的计数（6 次进入调试模式）
 
   @override
@@ -41,7 +41,7 @@ class _AboutViewState extends ConsumerState<AboutView> {
         _buildNumber = info.buildNumber;
       });
     } catch (_) {
-      // 读取失败时保留默认值（1.0.0），不阻塞页面。
+      // 读取失败时保留默认值（1.0.1），不阻塞页面。
     }
   }
 

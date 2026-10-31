@@ -4,6 +4,7 @@
   <img src="https://img.shields.io/badge/Flutter-02569B?style=for-the-badge&logo=flutter&logoColor=white" alt="Flutter" />
   <img src="https://img.shields.io/badge/Dart-0175C2?style=for-the-badge&logo=dart&logoColor=white" alt="Dart" />
   <img src="https://img.shields.io/badge/Platform-Android%20%7C%20iOS%20%7C%20Pad-lightgrey?style=for-the-badge" alt="Platform" />
+  <img src="https://img.shields.io/badge/Version-1.0.1-E60012?style=for-the-badge" alt="Version" />
 </p>
 
 A cross-platform (phone / tablet) **family habit-building app for children**. Daily chores (brushing teeth, tidying the room, going to bed on time) are wrapped into an "Ultraman vs. monsters" adventure: each check-in is a battle, each reward earns EXP and Coins, and unlocks hero cards. Local-first storage with dual-track sync (LAN / WebDAV).
