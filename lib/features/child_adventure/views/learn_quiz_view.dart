@@ -560,7 +560,7 @@ class _SpeakerIconState extends State<_SpeakerIcon>
     final color = UltramanTheme.gold;
     if (widget.loading) {
       return ScaleTransition(
-        scale: Tween<double>(0.75, 1.12).animate(
+        scale: Tween<double>(begin: 0.75, end: 1.12).animate(
           CurvedAnimation(parent: _ctrl, curve: Curves.easeInOut),
         ),
         child: Icon(Icons.volume_up, size: 22, color: color),
@@ -581,7 +581,7 @@ class _SpeakerIconState extends State<_SpeakerIcon>
 
   Widget _wave(int i, Color color) {
     final start = 0.15 + i * 0.22;
-    final anim = Tween<double>(0.25, 1.0).animate(
+    final anim = Tween<double>(begin: 0.25, end: 1.0).animate(
       CurvedAnimation(
         parent: _ctrl,
         curve: Interval(start, start + 0.55, curve: Curves.easeInOut),
@@ -592,7 +592,7 @@ class _SpeakerIconState extends State<_SpeakerIcon>
       builder: (_, __) => Container(
         margin: const EdgeInsets.only(left: 2),
         width: 2.5,
-        height: 6 + 12 * anim.value,
+        height: 6.0 + 12.0 * (anim.value ?? 0.0),
         decoration: BoxDecoration(
           color: color,
           borderRadius: BorderRadius.circular(1.5),
