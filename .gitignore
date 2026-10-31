@@ -67,3 +67,6 @@ AIKit_AEE_Android_XTTS10_e2e44feff_2.1.3_SDK2.2.17_rc6.zip
 # 离线 TTS 神经网络模型（zh 116MB / en 75MB）超过代码托管平台单文件/ LFS 限制，
 # 不纳入 git；保留本地用于编译，克隆后需自行放置（见 README）。
 assets/tts_model/**/*.onnx
+
+# 拼音跟读教学视频（体积较大，不纳入 git；保留本地用于编译，克隆后需自行放置）。
+assets/video/*.mp4

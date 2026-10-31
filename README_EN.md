@@ -44,8 +44,8 @@ A cross-platform (phone / tablet) **family habit-building app for children**. Da
 
 ### Child Learning Read-Along System (Offline TTS)
 - Three subjects: **Pinyin / Chinese characters / English**, unified `LearnItem` word bank + `Task` config.
-- **Fully offline neural TTS** (Sherpa-ONNX Chinese VITS + English Piper dual models) — **Sherpa end-to-end**, stable single-character / single-word reading with no network.
-- **Pinyin initials / finals / whole-syllable items are read as Chinese "呼读音" characters** (Chinese model reads the corresponding character, e.g. `f` → "佛", `b` → "波", `a` → "啊"). The pure-consonant scheme for initials (`f` → /f/, English Piper phoneme synthesis) is kept as a toggle `kShengmuPureConsonant` (`pinyin_data.dart`, default `false`).
+- **Fully offline neural TTS** (Sherpa-ONNX Chinese VITS + English Piper dual models) — **Sherpa end-to-end**, for Chinese-character / English reading, stable single-character / single-word playback with no network.
+- **The Pinyin module now plays a teaching video instead of TTS**: a bundled MP4 auto-plays on entry (pause / scrub supported); finishing the video or tapping "完成学习" grants the reward. Video source: Bilibili BV1Fe411N7my (attributed in small print at the bottom of the card, tappable to open the original; removable on takedown request).
 - Chinese: also reads the example word and shows its tone-marked pinyin above the word. English: also reads the Chinese meaning with IPA (American) + pinyin of the meaning.
 - **Instant "Listen once"**: on page entry the app pre-synthesizes **all** read-aloud segments into cache (+ in-flight de-duplication), so tapping plays immediately; the speaker icon animates while playing / loading.
 - The learning tasks (Pinyin / Chinese / English) and their check-in records are all included in the full backup (see Data Sync) — survive device switch / restore.

@@ -16,6 +16,8 @@ import '../../../domain/providers/check_in_provider.dart';
 import '../../../domain/providers/family_provider.dart';
 import '../../../domain/providers/theme_provider.dart';
 import '../widgets/learn_target_card.dart';
+import '../widgets/pinyin_video_player.dart';
+import 'package:url_launcher/url_launcher.dart';
 
 /// 儿童端统一跟读闯关界面 (学拼音 / 识字 / 学英语三个模块共用)。
 ///
@@ -49,14 +51,17 @@ class _LearnQuizViewState extends ConsumerState<LearnQuizView> {
     super.initState();
     _generateItems();
     _checkEnglishTts();
-    // 预热 TTS 模型：先 await 当前条目合成完成 (首点击零延迟)，再后台预载全部条目，
-    // 彻底消除「听一遍」延迟。
-    unawaited(SpeechService.instance.warmUp().then((ok) async {
-      if (!ok || !mounted) return;
-      await _prefetchCurrent(includeNext: true, wait: true);
-      if (mounted) setState(() => _preloaded = true);
-      unawaited(_prefetchAll()); // 后台预载剩余全部条目
-    }));
+    // 拼音模块改为播放视频，无需 TTS 模型预热；其余学科预热以消除「听一遍」延迟。
+    if (widget.task.learnSubject != LearnSubjects.pinyin) {
+      // 预热 TTS 模型：先 await 当前条目合成完成 (首点击零延迟)，再后台预载全部条目，
+      // 彻底消除「听一遍」延迟。
+      unawaited(SpeechService.instance.warmUp().then((ok) async {
+        if (!ok || !mounted) return;
+        await _prefetchCurrent(includeNext: true, wait: true);
+        if (mounted) setState(() => _preloaded = true);
+        unawaited(_prefetchAll()); // 后台预载剩余全部条目
+      }));
+    }
   }
 
   /// 预合成朗读分段 (不播放)，进页面/切题时调用。
@@ -224,6 +229,9 @@ class _LearnQuizViewState extends ConsumerState<LearnQuizView> {
     }
   }
 
+  /// 拼音模块是否为「纯视频播放页」(替代 TTS 朗读)。
+  bool get _isPinyinVideo => widget.task.learnSubject == LearnSubjects.pinyin;
+
   String get _scopeLabel {
     // 拼音已移除声母/韵母/整体认读分类，改为「按顺序 / 随机」说明。
     return widget.task.learnOrdered ? '按顺序' : '随机';
@@ -245,9 +253,11 @@ class _LearnQuizViewState extends ConsumerState<LearnQuizView> {
           Center(
             child: ConstrainedBox(
               constraints: BoxConstraints(maxWidth: isLandscape ? 1080 : 720),
-              child: isLandscape
-                  ? _buildLandscapeLayout()
-                  : _buildPortraitLayout(),
+              child: _isPinyinVideo
+                  ? _buildPinyinVideoLayout()
+                  : (isLandscape
+                      ? _buildLandscapeLayout()
+                      : _buildPortraitLayout()),
             ),
           ),
           if (_showRewardAnim)
@@ -329,6 +339,70 @@ class _LearnQuizViewState extends ConsumerState<LearnQuizView> {
         ],
       ),
     );
+  }
+
+  /// 拼音模块：纯视频播放页 (替代 TTS 朗读)。
+  ///
+  /// 加载完成后自动播放，可暂停/继续、拖拽进度；看完或点「完成学习」即触发发奖。
+  Widget _buildPinyinVideoLayout() {
+    return Padding(
+      padding: const EdgeInsets.all(16),
+      child: Column(
+        children: [
+          Expanded(
+            child: Center(
+              child: PinyinVideoPlayer(
+                onFinished: () {
+                  // 视频播完即视为完成，触发发奖；_finish 内部已防重入。
+                  if (mounted && !_finished) _finish();
+                },
+              ),
+            ),
+          ),
+          const SizedBox(height: 12),
+          _videoSourceNote(),
+          const SizedBox(height: 12),
+          SizedBox(
+            width: double.infinity,
+            child: ElevatedButton(
+              onPressed: _finished ? null : _finish,
+              style: ElevatedButton.styleFrom(
+                backgroundColor: UltramanTheme.blue,
+                foregroundColor: Colors.white,
+                padding: const EdgeInsets.symmetric(vertical: 14),
+                shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(14),
+                ),
+              ),
+              child: const Text('完成学习'),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  /// 视频来源小字备注 (侵权可撤销)：点击打开 B 站原视频。
+  Widget _videoSourceNote() {
+    return InkWell(
+      onTap: _openSourceLink,
+      child: const Text(
+        '视频来源：哔哩哔哩 BV1Fe411N7my（点击打开，侵权可撤销）',
+        style: TextStyle(color: Colors.white54, fontSize: 11),
+        textAlign: TextAlign.center,
+      ),
+    );
+  }
+
+  Future<void> _openSourceLink() async {
+    final uri = Uri.parse('https://www.bilibili.com/video/BV1Fe411N7my');
+    try {
+      if (await canLaunchUrl(uri)) {
+        await launchUrl(uri, mode: LaunchMode.externalApplication);
+      }
+    } catch (e) {
+      debugPrint('[LearnQuiz] 打开视频来源链接失败: $e');
+    }
   }
 
   Widget _buildHeader() {

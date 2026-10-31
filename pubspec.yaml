@@ -68,6 +68,8 @@ dependencies:
   piper_phonemize: ^1.5.9
   # 汉字转拼音 (中文词语 / 英文释义自动标注带声调拼音)
   pinyin: ^3.3.0
+  # 视频播放 (拼音模块改为播放跟读教学视频，替代 TTS 朗读)
+  video_player: ^2.8.0
 
 dev_dependencies:
   flutter_test:
@@ -102,6 +104,7 @@ flutter:
     - assets/audio/transform.mp3
     - assets/audio/victory.mp3
     - assets/audio/启动音效.mp3
+    - assets/video/pinyin_read_along.mp4
     - assets/heroes/
     - assets/heroes/ace/
     - assets/heroes/ace/ace_skill.mp3

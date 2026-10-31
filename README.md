@@ -99,8 +99,8 @@
 
 ### 儿童端学习跟读系统（离线 TTS）
 - [x] 学拼音 / 识字 / 学英语 三学科跟读闯关（统一 `LearnItem` 字库 + `Task` 配置）
-- [x] **纯离线神经网络 TTS**（Sherpa-ONNX 中文 VITS + 英文 Piper 双模型），**全程 Sherpa**，无需联网即可稳定朗读单字 / 单词
-- [x] 拼音**声母 / 韵母 / 整体认读统一读汉字呼读音**（中文模型朗读对应汉字，如 f→「佛」、b→「波」、a→「啊」）；声母纯辅音方案（f→/f/，英文 Piper 音素合成）保留为可切换开关 `kShengmuPureConsonant`（`pinyin_data.dart`，默认 `false`）
+- [x] **识字 / 英语 纯离线神经网络 TTS**（Sherpa-ONNX 中文 VITS + 英文 Piper 双模型），**全程 Sherpa**，无需联网即可稳定朗读单字 / 单词
+- [x] **拼音模块改为播放跟读教学视频**（内置 MP4，进入即自动播放，可暂停 / 拖拽进度；看完或点「完成学习」即发奖）；视频来源：哔哩哔哩 BV1Fe411N7my（侵权可撤销，卡片底部小字标注并可点击打开原视频）
 - [x] 中文补读「词语」并在词语上方标注带声调拼音；英文补读中文释义并标注美式音标（IPA）+ 释义拼音
 - [x] 「听一遍」极速响应：进页面预加载**全部**朗读内容（预合成缓存）+ 在途合成去重，点击即时发声；喇叭图标在朗读 / 加载时动态变化
 - [x] 三学科闯关的任务配置与打卡记录均纳入全量备份（见下方数据同步引擎），换机 / 恢复不丢失
@@ -167,6 +167,8 @@ flutter pub get
 ```
 
 > **离线 TTS 模型文件未纳入 git**：`assets/tts_model/zh/vits-zh-hf-fanchen-C.onnx`（约 116MB）与 `assets/tts_model/en/en_US-libritts_r-medium.onnx`（约 75MB）因超过代码托管平台的单文件 / LFS 体积限制，不随仓库分发。请将其下载并放入对应目录（保留 `tokens.txt` / `lexicon.txt` / `*.fst` 等已入库的支撑文件），离线发音方可生效；模型缺失时应用会自动降级为系统 TTS。模型来源：Sherpa-ONNX 官方模型库（`k2-fsa/sherpa-onnx` Releases / Hugging Face `csukuangfj`）。
+
+> **拼音跟读教学视频未纳入 git**：`assets/video/pinyin_read_along.mp4`（约 15MB）同样因体积不随仓库分发。请将该文件放入 `assets/video/` 目录，拼音模块方可播放视频；缺失时拼音模块会显示加载失败（不影响识字 / 英语模块）。来源：哔哩哔哩 BV1Fe411N7my（侵权可撤销）。
 
 ### 运行
 
