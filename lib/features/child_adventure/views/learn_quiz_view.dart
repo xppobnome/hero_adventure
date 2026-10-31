@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'dart:math';
 
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -580,24 +581,23 @@ class _SpeakerIconState extends State<_SpeakerIcon>
   }
 
   Widget _wave(int i, Color color) {
-    final start = 0.15 + i * 0.22;
-    final anim = Tween<double>(begin: 0.25, end: 1.0).animate(
-      CurvedAnimation(
-        parent: _ctrl,
-        curve: Interval(start, start + 0.55, curve: Curves.easeInOut),
-      ),
-    );
+    // 直接用 0..1 的控制器值驱动正弦波形，避免 Interval 的 end<=1.0 断言崩溃。
+    // 三条声波错相位，形成连续起伏的「发声中」动态效果。
     return AnimatedBuilder(
       animation: _ctrl,
-      builder: (_, __) => Container(
-        margin: const EdgeInsets.only(left: 2),
-        width: 2.5,
-        height: 6.0 + 12.0 * (anim.value ?? 0.0),
-        decoration: BoxDecoration(
-          color: color,
-          borderRadius: BorderRadius.circular(1.5),
-        ),
-      ),
+      builder: (_, __) {
+        final phase = _ctrl.value * 2 * pi + i * (2 * pi / 3);
+        final t = 0.5 + 0.5 * sin(phase);
+        return Container(
+          margin: const EdgeInsets.only(left: 2),
+          width: 2.5,
+          height: 4.0 + 14.0 * t,
+          decoration: BoxDecoration(
+            color: color,
+            borderRadius: BorderRadius.circular(1.5),
+          ),
+        );
+      },
     );
   }
 }

@@ -436,6 +436,23 @@ class _SynthResult {
   _SynthResult({required this.seq, required this.wavPath});
 }
 
+/// 输出增益：补偿 Sherpa 模型输出幅度偏低导致的「声音偏小」。
+/// 可调参数：
+/// - [_kNormalGain]   中文(拼音呼读音/识字)与英文单词；
+/// - [_kPhonemeGain] 拼音声母纯辅音(单辅音能量低、时长短，需更强增益)。
+const double _kNormalGain = 1.7;
+const double _kPhonemeGain = 2.4;
+
+/// 对 PCM 样本施加增益并限幅到 [-1,1]，避免削波破音。
+Float32List _applyGain(Float32List samples, double gain) {
+  final out = Float32List(samples.length);
+  for (int i = 0; i < samples.length; i++) {
+    final v = samples[i] * gain;
+    out[i] = v > 1.0 ? 1.0 : (v < -1.0 ? -1.0 : v);
+  }
+  return out;
+}
+
 // ============================================================================
 // isolate 入口：加载模型 + 处理合成请求
 // ============================================================================
@@ -510,6 +527,11 @@ void _isolateMain(_IsolateInit init) async {
             phonemeCodepoints: msg.phonemeCodepoints,
           );
           if (audio.samples.isNotEmpty && audio.sampleRate > 0) {
+            // 增益补偿：拼音/英文单词用 _kNormalGain，拼音声母纯辅音用 _kPhonemeGain。
+            // 用户反馈两类发音都偏轻，统一限幅防削波。
+            final gain =
+                msg.phonemeCodepoints != null ? _kPhonemeGain : _kNormalGain;
+            final samples = _applyGain(audio.samples, gain);
             // 在 isolate 内写 WAV (bindings 已就绪)。
             wavPath = p.join(
               init.tmpDir,
@@ -517,7 +539,7 @@ void _isolateMain(_IsolateInit init) async {
             );
             sherpa_onnx.writeWave(
               filename: wavPath,
-              samples: audio.samples,
+              samples: samples,
               sampleRate: audio.sampleRate,
             );
           }
