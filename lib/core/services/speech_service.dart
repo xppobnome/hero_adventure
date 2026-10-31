@@ -50,11 +50,20 @@ class SpeechService {
   /// 实现：优先离线 Sherpa TTS (中文 VITS / 英文 Piper 双模型，发音稳定)，
   /// 失败时降级系统 flutter_tts。
   /// [appendChinese] 可选：英语单词后追加的中文释义 (切换中文朗读)。
+  ///
+  /// 注意：拼音声母纯辅音 (subject=phoneme) 全程走 Sherpa，不降级系统 TTS——
+  /// 系统 TTS 无法发孤立辅音 (如 f 会被读成字母名 "ef")，降级反而破坏发音内容。
   Future<void> speak(
     String text, {
     required String subject,
     String? appendChinese,
   }) async {
+    // 拼音声母纯辅音：全程 Sherpa，不降级系统 TTS。
+    if (subject == LearnSubjects.phoneme) {
+      await SherpaTtsService.instance.speak(text, subject: subject);
+      return;
+    }
+
     // 优先 Sherpa 离线 TTS。
     final sherpaOk = await SherpaTtsService.instance.speak(
       text,

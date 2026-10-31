@@ -295,6 +295,12 @@ class SherpaTtsService {
       return await inflight.future;
     }
 
+    // 拼音声母纯辅音：用英文模型按 eSpeak 音素直接合成 (text 即音素串)。
+    final isPhoneme = subject == LearnSubjects.phoneme;
+    final isEnglish = subject == LearnSubjects.english || isPhoneme;
+    final phonemeCodepoints =
+        isPhoneme ? [text.runes.toList()] : null;
+
     // 发起新合成：登记在途标记，供并发请求复用。
     final completer = Completer<String?>();
     _inflight[key] = completer;
@@ -305,7 +311,8 @@ class SherpaTtsService {
     port.send(_SynthRequest(
       seq: seq,
       text: text,
-      isEnglish: subject == LearnSubjects.english,
+      isEnglish: isEnglish,
+      phonemeCodepoints: phonemeCodepoints,
     ));
 
     try {
@@ -414,10 +421,12 @@ class _SynthRequest {
   final int seq;
   final String text;
   final bool isEnglish;
+  final List<List<int>>? phonemeCodepoints;
   _SynthRequest({
     required this.seq,
     required this.text,
     required this.isEnglish,
+    this.phonemeCodepoints,
   });
 }
 
@@ -498,6 +507,7 @@ void _isolateMain(_IsolateInit init) async {
             en: en,
             text: msg.text,
             isEnglish: msg.isEnglish,
+            phonemeCodepoints: msg.phonemeCodepoints,
           );
           if (audio.samples.isNotEmpty && audio.sampleRate > 0) {
             // 在 isolate 内写 WAV (bindings 已就绪)。
@@ -529,9 +539,20 @@ sherpa_onnx.GeneratedAudio _synthesize({
   required sherpa_onnx.OfflineTts en,
   required String text,
   required bool isEnglish,
+  List<List<int>>? phonemeCodepoints,
 }) {
   if (isEnglish) {
-    // 英文：先 espeak-ng 音素化，再传 phonemeCodepoints。
+    if (phonemeCodepoints != null) {
+      // 拼音声母纯辅音：直接使用传入的 eSpeak 音素串合成 (不依赖 phonemize)。
+      final gen = sherpa_onnx.OfflineTtsGenerationConfig(
+        sid: 0,
+        speed: 1.0,
+        silenceScale: 0.3,
+        phonemeCodepoints: phonemeCodepoints,
+      );
+      return en.generateWithConfig(text: '', config: gen);
+    }
+    // 英文单词：先 espeak-ng 音素化，再传 phonemeCodepoints。
     final sentences = piper.PiperPhonemize.phonemize(text, voice: 'en-us')
         .where((s) => s.isNotEmpty)
         .toList();

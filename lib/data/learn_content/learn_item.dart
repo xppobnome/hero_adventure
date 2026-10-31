@@ -15,6 +15,10 @@ class LearnSubjects {
   static const String pinyin = 'pinyin';
   static const String hanzi = 'hanzi';
   static const String english = 'english';
+
+  /// 拼音声母纯辅音：用英文 Piper 模型按 eSpeak 音素直接合成孤立辅音
+  /// (如 f → /f/，而非中文模型整音节「佛 fo」)。内容不偏移，仅切换发音方式。
+  static const String phoneme = 'phoneme';
 }
 
 /// 统一的跟读条目模型，三个模块共用。

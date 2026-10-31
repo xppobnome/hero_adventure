@@ -41,15 +41,20 @@ class _LearnQuizViewState extends ConsumerState<LearnQuizView> {
   bool _showRewardAnim = false;
   bool _rewardGranted = false;
   bool _englishTtsMissing = false;
+  bool _preloaded = false;
 
   @override
   void initState() {
     super.initState();
     _generateItems();
     _checkEnglishTts();
-    // 预热 TTS 模型并完整预合成当前条目 (等待完成)，保证首次「听一遍」零延迟。
+    // 预热 TTS 模型：先 await 当前条目合成完成 (首点击零延迟)，再后台预载全部条目，
+    // 彻底消除「听一遍」延迟。
     unawaited(SpeechService.instance.warmUp().then((ok) async {
-      if (ok && mounted) await _prefetchCurrent(includeNext: true, wait: true);
+      if (!ok || !mounted) return;
+      await _prefetchCurrent(includeNext: true, wait: true);
+      if (mounted) setState(() => _preloaded = true);
+      unawaited(_prefetchAll()); // 后台预载剩余全部条目
     }));
   }
 
@@ -73,6 +78,16 @@ class _LearnQuizViewState extends ConsumerState<LearnQuizView> {
     await prefetchItem(_currentIndex);
     if (includeNext && _currentIndex < _items.length - 1) {
       unawaited(prefetchItem(_currentIndex + 1));
+    }
+  }
+
+  /// 后台预载当前任务**全部**条目 (所有朗读分段)，点击任意条目均直接命中缓存。
+  Future<void> _prefetchAll() async {
+    if (_items.isEmpty) return;
+    for (final item in _items) {
+      for (final seg in LearnDisplay.speakSegments(item)) {
+        SpeechService.instance.prefetch(seg.$1, subject: seg.$2);
+      }
     }
   }
 
@@ -390,12 +405,13 @@ class _LearnQuizViewState extends ConsumerState<LearnQuizView> {
 
   Widget _buildControls() {
     final canAct = !_finished && _items.isNotEmpty;
+    final isPlaying = canAct && _statuses[_currentIndex] == LearnCardStatus.playing;
     return Row(
       children: [
         Expanded(
           child: ElevatedButton.icon(
             onPressed: canAct ? _speak : null,
-            icon: const Icon(Icons.volume_up, size: 22),
+            icon: _SpeakerIcon(active: isPlaying, loading: !_preloaded),
             label: const Text('听一遍'),
             style: ElevatedButton.styleFrom(
               backgroundColor: UltramanTheme.blue,
@@ -502,5 +518,86 @@ class _LearnQuizViewState extends ConsumerState<LearnQuizView> {
       default:
         return Icons.school;
     }
+  }
+}
+
+/// 「听一遍」喇叭图标动态组件。
+///
+/// - [active] 朗读中：喇叭右侧三条声波动画 (高度起伏)，提示正在发声；
+/// - [loading] 预加载中 (模型预热 / 首条合成尚未完成)：喇叭整体脉冲缩放，
+///   给出「正在准备」的视觉反馈，避免儿童误以为卡顿；
+/// - 其余状态：静态喇叭图标。
+class _SpeakerIcon extends StatefulWidget {
+  final bool active;
+  final bool loading;
+  const _SpeakerIcon({this.active = false, this.loading = false});
+
+  @override
+  State<_SpeakerIcon> createState() => _SpeakerIconState();
+}
+
+class _SpeakerIconState extends State<_SpeakerIcon>
+    with SingleTickerProviderStateMixin {
+  late final AnimationController _ctrl;
+
+  @override
+  void initState() {
+    super.initState();
+    _ctrl = AnimationController(
+      vsync: this,
+      duration: const Duration(milliseconds: 600),
+    )..repeat();
+  }
+
+  @override
+  void dispose() {
+    _ctrl.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final color = UltramanTheme.gold;
+    if (widget.loading) {
+      return ScaleTransition(
+        scale: Tween<double>(0.75, 1.12).animate(
+          CurvedAnimation(parent: _ctrl, curve: Curves.easeInOut),
+        ),
+        child: Icon(Icons.volume_up, size: 22, color: color),
+      );
+    }
+    if (widget.active) {
+      return Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Icon(Icons.volume_up, size: 22, color: color),
+          const SizedBox(width: 3),
+          ...List.generate(3, (i) => _wave(i, color)),
+        ],
+      );
+    }
+    return Icon(Icons.volume_up, size: 22, color: color);
+  }
+
+  Widget _wave(int i, Color color) {
+    final start = 0.15 + i * 0.22;
+    final anim = Tween<double>(0.25, 1.0).animate(
+      CurvedAnimation(
+        parent: _ctrl,
+        curve: Interval(start, start + 0.55, curve: Curves.easeInOut),
+      ),
+    );
+    return AnimatedBuilder(
+      animation: _ctrl,
+      builder: (_, __) => Container(
+        margin: const EdgeInsets.only(left: 2),
+        width: 2.5,
+        height: 6 + 12 * anim.value,
+        decoration: BoxDecoration(
+          color: color,
+          borderRadius: BorderRadius.circular(1.5),
+        ),
+      ),
+    );
   }
 }

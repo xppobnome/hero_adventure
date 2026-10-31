@@ -10,6 +10,7 @@ import 'package:pinyin/pinyin.dart';
 
 import 'english_ipa.dart';
 import 'learn_item.dart';
+import 'pinyin_data.dart';
 
 class LearnDisplay {
   LearnDisplay._();
@@ -58,7 +59,8 @@ class LearnDisplay {
 
   /// 朗读分段：按学科顺序返回 [(文本, 学科)]。
   /// - 识字：单字 → 组词 (均用中文模型)；
-  /// - 拼音：呼读音例字 (speakText，已含例字，无需重复组词)；
+  /// - 拼音：声母用纯辅音音素 (phoneme，英文模型按 eSpeak 音素直接合成，f→/f/ 而非「佛」)；
+  ///   韵母 / 整体认读用中文模型朗读整音节 (呼读音 / 音节，内容已正确)；
   /// - 英文：单词 (英文模型) → 中文释义 (中文模型)。
   static List<(String, String)> speakSegments(LearnItem item) {
     switch (item.subject) {
@@ -68,6 +70,14 @@ class LearnDisplay {
         if (w != null) segs.add((w, LearnSubjects.hanzi));
         return segs;
       case LearnSubjects.pinyin:
+        // 声母：纯辅音音素，保证发音内容 = 声母本音 (如 f→/f/)。
+        if (item.category == 'shengmu') {
+          final ph = pinyinInitialPhoneme[item.displayText];
+          if (ph != null && ph.isNotEmpty) {
+            return [(ph, LearnSubjects.phoneme)];
+          }
+        }
+        // 韵母 / 整体认读 / 兜底：中文模型朗读整音节。
         return [(item.speakText, LearnSubjects.hanzi)];
       case LearnSubjects.english:
         return [

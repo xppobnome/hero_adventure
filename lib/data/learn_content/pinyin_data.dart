@@ -84,3 +84,20 @@ const List<LearnItem> pinyinTable = [
   LearnItem(subject: 'pinyin', displayText: 'yun', subText: 'yūn 云', speakText: '云', matchTargets: ['yun', '云'], category: 'zhengti'),
   LearnItem(subject: 'pinyin', displayText: 'ying', subText: 'yīng 英', speakText: '英', matchTargets: ['ying', '英'], category: 'zhengti'),
 ];
+
+/// 拼音**声母** → eSpeak 音素串（供英文 Piper 模型直接合成「纯辅音」）。
+///
+/// 声母的本音是辅音（f 读作 /f/，绝不能读成呼读音「佛 fo」）。
+/// 中文 VITS 模型只能按汉字整音节朗读（佛 = fo），无法发孤立辅音，
+/// 因此声母走英文 Piper 模型，以 eSpeak 音素串整体作为一个音素 token 合成：
+/// - 基础辅音 (b/p/m/f/d/t/n/l/g/k/h/s/w) 取单字符音素，发音内容完全对应；
+/// - 破擦/擦音 (j→dʒ、q/ch→tʃ、x/sh→ʃ、zh→dʒ、r→r、z/c→ts) 用 eSpeak 二合音素近似，
+///   比整音节「鸡/七/西」更贴近声母本音；y→j 对应半元音 /j/。
+/// 韵母 / 整体认读仍用中文模型朗读整音节（呼读音 / 音节），内容已正确，不改。
+const Map<String, String> pinyinInitialPhoneme = {
+  'b': 'b', 'p': 'p', 'm': 'm', 'f': 'f',
+  'd': 'd', 't': 't', 'n': 'n', 'l': 'l',
+  'g': 'g', 'k': 'k', 'h': 'h', 's': 's', 'w': 'w', 'y': 'j',
+  'j': 'dʒ', 'q': 'tʃ', 'x': 'ʃ',
+  'zh': 'dʒ', 'ch': 'tʃ', 'sh': 'ʃ', 'r': 'r', 'z': 'ts', 'c': 'ts',
+};
