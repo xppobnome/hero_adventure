@@ -1,0 +1,71 @@
+classDiagram
+    class Task {
+        +String type
+        +String learnSubject
+        +String learnScope
+        +int learnCount
+        +int learnPassPercent
+        +bool get isLearnTask
+        +String typeLabel
+        +String cycleDescription
+        +bool isActiveOnDay(int weekday)
+        +Task.fromJson(Map)
+        +Map toJson()
+    }
+
+    class LearnItem {
+        +String subject
+        +String displayText
+        +String subText
+        +String speakText
+        +List~String~ matchTargets
+        +String category
+    }
+
+    class LearnQuizGenerator {
+        +String subject
+        +String scope
+        +int count
+        +List~LearnItem~ generate()
+    }
+
+    class LearnJudge {
+        +String normalizePinyin(String)
+        +String normalizeEnglish(String)
+        +bool isMatch(String recognized, LearnItem item)
+    }
+
+    class SpeechService {
+        +FlutterTts _tts
+        +SpeechToText _stt
+        +Future~void~ speak(String, subject)
+        +Future~void~ stopSpeaking()
+        +Future~bool~ ensureRecognizer()
+        +Future~String?~ recognize(localeId)
+        +bool isListening
+    }
+
+    class LearnQuizView {
+        +String childId
+        +Task task
+        +_generateItems()
+        +_speak()
+        +_record()
+        +_judge()
+        +_finishAndGrant()
+    }
+
+    class LearnTargetCard {
+        +LearnItem item
+        +String status
+        +VoidCallback onListen
+    }
+
+    LearnQuizGenerator ..> LearnItem : 生成
+    LearnQuizGenerator ..> filterLearnTable : 依赖
+    LearnJudge ..> LearnItem : 判分
+    LearnQuizView --> LearnQuizGenerator : 抽题
+    LearnQuizView --> LearnJudge : 判分
+    LearnQuizView --> SpeechService : 播放/识别
+    LearnQuizView --> LearnTargetCard : 渲染
+    LearnQuizView --> Task : 读取配置

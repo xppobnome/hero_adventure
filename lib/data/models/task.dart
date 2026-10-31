@@ -9,6 +9,7 @@
 /// - `custom_days`  打卡指定日期 (家长选择一周内的具体星期几)
 /// - `custom_range` 自定义打卡周期 (从起始日期到结束日期连续打卡)
 /// - `math`   每日数学题学习 (儿童作答后判定)
+/// - `learn`  每日跟读学习 (拼音/识字/英语，儿童跟读后语音判定)
 ///
 /// 完成后可指定奖励 [rewardId]，为空则默认发放 [rewardCoins]/[rewardExp]。
 class Task {
@@ -34,6 +35,13 @@ class Task {
   final int mathCount; // 每天需完成的题目数量
   final int mathPassPercent; // 答对题数百分比阈值 (默认 100，即全对才发奖励)
 
+  // ===== 学习跟读任务字段 (type == 'learn' 时生效) =====
+  final String learnSubject; // 学科：'pinyin' / 'hanzi' / 'english'，默认 'pinyin'
+  final String learnScope; // 内容范围：拼音本轮统一 'all' (已移除声母/韵母分类)
+  final int learnCount; // 每天跟读条目数量，默认 10
+  final int learnPassPercent; // 通过阈值百分比，默认 80 (语音识别波动大，低于数学)
+  final bool learnOrdered; // 是否按顺序读 (true=顺序，false=随机)，默认 false(随机)
+
   Task({
     required this.id,
     required this.title,
@@ -50,10 +58,18 @@ class Task {
     this.mathOp = 'add',
     this.mathCount = 10,
     this.mathPassPercent = 100,
+    this.learnSubject = 'pinyin',
+    this.learnScope = 'all',
+    this.learnCount = 10,
+    this.learnPassPercent = 80,
+    this.learnOrdered = false,
   });
 
   /// 是否为数学题学习任务。
   bool get isMathTask => type == 'math';
+
+  /// 是否为学习跟读任务。
+  bool get isLearnTask => type == 'learn';
 
   factory Task.fromJson(Map<String, dynamic> json) {
     return Task(
@@ -75,6 +91,11 @@ class Task {
       mathOp: json['mathOp'] as String? ?? 'add',
       mathCount: json['mathCount'] as int? ?? 10,
       mathPassPercent: json['mathPassPercent'] as int? ?? 100,
+      learnSubject: json['learnSubject'] as String? ?? 'pinyin',
+      learnScope: json['learnScope'] as String? ?? 'all',
+      learnCount: json['learnCount'] as int? ?? 10,
+      learnPassPercent: json['learnPassPercent'] as int? ?? 80,
+      learnOrdered: json['learnOrdered'] as bool? ?? false,
     );
   }
 
@@ -95,6 +116,11 @@ class Task {
       'mathOp': mathOp,
       'mathCount': mathCount,
       'mathPassPercent': mathPassPercent,
+      'learnSubject': learnSubject,
+      'learnScope': learnScope,
+      'learnCount': learnCount,
+      'learnPassPercent': learnPassPercent,
+      'learnOrdered': learnOrdered,
     };
   }
 
@@ -117,6 +143,8 @@ class Task {
         return '自定义打卡周期';
       case 'math':
         return '每日数学题';
+      case 'learn':
+        return '每日跟读学习';
       default:
         return type;
     }
@@ -128,6 +156,8 @@ class Task {
       case 'daily':
         return true;
       case 'math':
+        return true;
+      case 'learn':
         return true;
       case 'custom_days':
         return selectedDays.contains(weekday);
@@ -151,6 +181,8 @@ class Task {
         return '每天都可以打卡';
       case 'math':
         return '每天做 $mathCount 道数学题';
+      case 'learn':
+        return '每天跟读 $learnCount 个内容';
       case 'weekly':
         return '每周内任意完成一次';
       case 'once':

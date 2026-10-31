@@ -14,12 +14,14 @@ import '../../../domain/providers/family_provider.dart';
 import '../../../domain/providers/task_provider.dart';
 import '../../../domain/providers/check_in_provider.dart';
 import '../../../domain/providers/theme_provider.dart';
+import '../../../data/learn_content/learn_item.dart';
 import '../../../data/models/task.dart';
 import '../widgets/child_dashboard.dart';
 import '../widgets/level_map.dart';
 import 'hero_gallery_view.dart';
 import 'reward_shop_view.dart';
 import 'math_quiz_view.dart';
+import 'learn_quiz_view.dart';
 import 'child_settings_view.dart';
 
 /// 儿童端主界面。
@@ -471,6 +473,15 @@ class _ChildAdventureViewState extends ConsumerState<ChildAdventureView> {
                     MathQuizView(childId: widget.childId, task: task),
               ),
             );
+          } else if (task.isLearnTask) {
+            // 学习跟读任务：直接进入统一跟读界面 (拼音/识字/英语共用)
+            Navigator.push(
+              context,
+              MaterialPageRoute(
+                builder: (_) =>
+                    LearnQuizView(childId: widget.childId, task: task),
+              ),
+            );
           } else {
             setState(() => _selectedTask = task);
           }
@@ -487,6 +498,20 @@ class _ChildAdventureViewState extends ConsumerState<ChildAdventureView> {
                 ),
                 child: const Icon(
                   Icons.calculate,
+                  color: Colors.white,
+                  size: 28,
+                ),
+              )
+            else if (task.isLearnTask)
+              Container(
+                width: 50,
+                height: 50,
+                decoration: const BoxDecoration(
+                  color: UltramanTheme.blue,
+                  shape: BoxShape.circle,
+                ),
+                child: Icon(
+                  _learnSubjectIcon(task.learnSubject),
                   color: Colors.white,
                   size: 28,
                 ),
@@ -574,6 +599,20 @@ class _ChildAdventureViewState extends ConsumerState<ChildAdventureView> {
         return Colors.grey;
       default:
         return UltramanTheme.blue;
+    }
+  }
+
+  /// 学习跟读任务的学科图标。
+  IconData _learnSubjectIcon(String subject) {
+    switch (subject) {
+      case LearnSubjects.pinyin:
+        return Icons.record_voice_over;
+      case LearnSubjects.hanzi:
+        return Icons.text_fields;
+      case LearnSubjects.english:
+        return Icons.abc;
+      default:
+        return Icons.school;
     }
   }
 

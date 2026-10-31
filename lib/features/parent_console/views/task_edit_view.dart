@@ -3,6 +3,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_screenutil/flutter_screenutil.dart';
 import 'package:uuid/uuid.dart';
 import '../../../core/widgets/ultraman_visuals.dart';
+import '../../../data/learn_content/learn_item.dart';
 import '../../../data/models/task.dart';
 import '../../../domain/providers/task_provider.dart';
 import '../../../domain/providers/theme_provider.dart';
@@ -26,6 +27,7 @@ class _TaskEditViewState extends ConsumerState<TaskEditView> {
   String _iconName = 'default_monster'; // 怪兽图标
   final List<int> _selectedDays = []; // 自定义日期的星期几
   bool _isMathTask = false; // 是否为每日数学题学习任务 (独立于周期类型)
+  bool _isLearnTask = false; // 是否为每日学习跟读任务 (独立于周期类型，与数学互斥)
 
   // 自定义打卡周期 (type == 'custom_range')
   DateTime? _rangeStart; // 起始日期
@@ -42,6 +44,15 @@ class _TaskEditViewState extends ConsumerState<TaskEditView> {
   final TextEditingController _customRangeController = TextEditingController();
   final TextEditingController _mathCountController = TextEditingController();
   final TextEditingController _passPercentController = TextEditingController();
+
+  // 学习跟读任务配置
+  String _learnSubject = 'pinyin'; // pinyin / hanzi / english
+  String _learnScope = 'all'; // 拼音本轮统一 'all' (已移除声母/韵母分类)
+  bool _learnOrdered = false; // true=按顺序读全部拼音，false=随机读
+  int _learnCount = 10; // 每天跟读条目数
+  int _learnPassPercent = 80; // 通过阈值百分比 (已无判分，保留字段兼容旧数据)
+  bool _isCustomLearnCount = false; // 是否使用自定义跟读数量
+  final TextEditingController _learnCountController = TextEditingController();
 
   static const List<String> _weekdays = ['周一', '周二', '周三', '周四', '周五', '周六', '周日'];
 
@@ -77,6 +88,9 @@ class _TaskEditViewState extends ConsumerState<TaskEditView> {
   /// 常见预设答对阈值 (百分比)。
   static const List<int> _presetPassPercents = [60, 80, 100];
 
+  /// 常见预设跟读数量。
+  static const List<int> _presetLearnCounts = [5, 10, 20];
+
   @override
   void initState() {
     super.initState();
@@ -85,6 +99,12 @@ class _TaskEditViewState extends ConsumerState<TaskEditView> {
     _expController = TextEditingController(text: widget.taskToEdit?.rewardExp.toString() ?? '50');
     if (widget.taskToEdit != null) {
       _selectedType = widget.taskToEdit!.type;
+      // math / learn 类型由独立开关 (_isMathTask/_isLearnTask) 控制，
+      // 周期下拉 (_cycleItems) 不包含这两个值，否则会触发 DropdownButton
+      // 断言崩溃 (items==null)。这里回退到 'daily' 作为下拉的占位值。
+      if (_selectedType == 'math' || _selectedType == 'learn') {
+        _selectedType = 'daily';
+      }
       _requirePhoto = widget.taskToEdit!.requirePhoto;
       _iconName = widget.taskToEdit!.iconName;
       _selectedDays.addAll(widget.taskToEdit!.selectedDays);
@@ -93,6 +113,15 @@ class _TaskEditViewState extends ConsumerState<TaskEditView> {
       _mathOp = widget.taskToEdit!.mathOp;
       _mathCount = widget.taskToEdit!.mathCount;
       _mathPassPercent = widget.taskToEdit!.mathPassPercent;
+      // 学习跟读任务配置
+      _isLearnTask = widget.taskToEdit!.isLearnTask;
+      _learnSubject = widget.taskToEdit!.learnSubject;
+      _learnScope = 'all'; // 拼音本轮统一 all，忽略旧数据可能存在的 shengmu/yunmu 分类
+      _learnOrdered = widget.taskToEdit!.learnOrdered;
+      _learnCount = widget.taskToEdit!.learnCount;
+      _learnPassPercent = widget.taskToEdit!.learnPassPercent;
+      _isCustomLearnCount = !_presetLearnCounts.contains(_learnCount);
+      _learnCountController.text = _learnCount.toString();
       // 自定义打卡周期
       _rangeStart = DateTime.tryParse(widget.taskToEdit!.rangeStart);
       _rangeEnd = DateTime.tryParse(widget.taskToEdit!.rangeEnd);
@@ -108,6 +137,7 @@ class _TaskEditViewState extends ConsumerState<TaskEditView> {
     } else {
       _mathCountController.text = '10';
       _passPercentController.text = '100';
+      _learnCountController.text = '10';
     }
   }
 
@@ -116,6 +146,7 @@ class _TaskEditViewState extends ConsumerState<TaskEditView> {
     _customRangeController.dispose();
     _mathCountController.dispose();
     _passPercentController.dispose();
+    _learnCountController.dispose();
     super.dispose();
   }
 
@@ -298,10 +329,23 @@ class _TaskEditViewState extends ConsumerState<TaskEditView> {
     );
   }
 
+  /// 切换学习学科。
+  ///
+  /// - 拼音/识字/英语本轮 scope 统一为 all (拼音已移除声母/韵母分类)。
+  /// - 阈值已移除 (读完全部即发奖)，切换学科仅改学科名。
+  void _onLearnSubjectChanged(String subject) {
+    setState(() {
+      _learnSubject = subject;
+      _learnScope = 'all';
+    });
+  }
+
   void _saveTask() {
     if (_formKey.currentState!.validate()) {
-      // 最终任务类型：数学题开关打开时固定为 math，否则用周期类型
-      final finalType = _isMathTask ? 'math' : _selectedType;
+      // 最终任务类型：数学题/学习跟读开关打开时优先，否则用周期类型
+      final finalType = _isMathTask
+          ? 'math'
+          : (_isLearnTask ? 'learn' : _selectedType);
 
       // 若为自定义范围，读取并校验输入值
       int finalRange = _mathRange;
@@ -340,6 +384,20 @@ class _TaskEditViewState extends ConsumerState<TaskEditView> {
           return;
         }
         finalPassPercent = passVal;
+      }
+
+      // 读取并校验每天跟读数量 (阈值已移除，读完全部即发奖)
+      int finalLearnCount = _learnCount;
+      int finalLearnPassPercent = _learnPassPercent;
+      if (_isLearnTask) {
+        final learnCountVal = int.tryParse(_learnCountController.text.trim());
+        if (learnCountVal == null || learnCountVal <= 0) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(content: Text('请输入有效的每天跟读数量 (大于 0 的整数)', style: TextStyle(fontSize: 14.sp))),
+          );
+          return;
+        }
+        finalLearnCount = learnCountVal;
       }
 
       // 自定义打卡周期校验
@@ -397,6 +455,11 @@ class _TaskEditViewState extends ConsumerState<TaskEditView> {
         mathOp: _isMathTask ? _mathOp : 'add',
         mathCount: _isMathTask ? finalCount : 10,
         mathPassPercent: _isMathTask ? finalPassPercent : 100,
+        learnSubject: _isLearnTask ? _learnSubject : 'pinyin',
+        learnScope: _isLearnTask ? 'all' : 'all',
+        learnCount: _isLearnTask ? finalLearnCount : 10,
+        learnPassPercent: _isLearnTask ? finalLearnPassPercent : 80,
+        learnOrdered: _isLearnTask ? _learnOrdered : false,
       );
 
       if (widget.taskToEdit == null) {
@@ -512,6 +575,8 @@ class _TaskEditViewState extends ConsumerState<TaskEditView> {
                     activeColor: UltramanTheme.blue,
                     onChanged: (v) => setState(() {
                       _isMathTask = v;
+                      // 与学习跟读互斥：打开数学题时关闭学习跟读
+                      if (v) _isLearnTask = false;
                       // 打开数学题开关时，若奖励仍为默认值，则填入推荐预设
                       if (v && _expController.text == '50' && _coinsController.text == '10') {
                         _expController.text = '30';
@@ -689,6 +754,160 @@ class _TaskEditViewState extends ConsumerState<TaskEditView> {
                         ),
                       ),
                     ],
+                    SizedBox(height: 16.h),
+                  ],
+                  // 每日学习跟读任务 (拼音/识字/英语，与数学题互斥)
+                  SwitchListTile(
+                    title: Text('每日学习跟读 (拼音/识字/英语)', style: TextStyle(fontSize: 16.sp, fontWeight: FontWeight.bold)),
+                    subtitle: Text('软件读一遍，孩子跟读一遍，语音判分后获得奖励', style: TextStyle(fontSize: 13.sp)),
+                    value: _isLearnTask,
+                    activeColor: UltramanTheme.blue,
+                    onChanged: (v) => setState(() {
+                      _isLearnTask = v;
+                      // 与数学题互斥：打开学习跟读时关闭数学题
+                      if (v) _isMathTask = false;
+                      if (v && _expController.text == '50' && _coinsController.text == '10') {
+                        _expController.text = '30';
+                        _coinsController.text = '15';
+                      }
+                    }),
+                    contentPadding: EdgeInsets.zero,
+                  ),
+                  SizedBox(height: 16.h),
+                  if (_isLearnTask) ...[
+                    Container(
+                      padding: EdgeInsets.symmetric(horizontal: 12.w, vertical: 8.h),
+                      decoration: BoxDecoration(
+                        color: UltramanTheme.blue.withValues(alpha: 0.08),
+                        borderRadius: BorderRadius.circular(8.r),
+                        border: Border.all(color: UltramanTheme.blue.withValues(alpha: 0.3)),
+                      ),
+                      child: Row(
+                        children: [
+                          Icon(Icons.record_voice_over, color: UltramanTheme.blue, size: 18.r),
+                          SizedBox(width: 8.w),
+                          Expanded(
+                            child: Text(
+                              '奖励类型：发放 ${_expController.text} 经验 + ${_coinsController.text} 能量币（可修改上方奖励值）',
+                              style: TextStyle(fontSize: 12.sp, color: Colors.grey.shade700),
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                    SizedBox(height: 16.h),
+                    Text('学习学科', style: TextStyle(fontSize: 14.sp, fontWeight: FontWeight.bold)),
+                    SizedBox(height: 8.h),
+                    Wrap(
+                      spacing: 8.w,
+                      runSpacing: 8.w,
+                      children: [
+                        ChoiceChip(
+                          label: const Text('学拼音'),
+                          selected: _learnSubject == LearnSubjects.pinyin,
+                          selectedColor: UltramanTheme.blue.withValues(alpha: 0.3),
+                          onSelected: (_) => _onLearnSubjectChanged(LearnSubjects.pinyin),
+                        ),
+                        ChoiceChip(
+                          label: const Text('识字'),
+                          selected: _learnSubject == LearnSubjects.hanzi,
+                          selectedColor: UltramanTheme.blue.withValues(alpha: 0.3),
+                          onSelected: (_) => _onLearnSubjectChanged(LearnSubjects.hanzi),
+                        ),
+                        ChoiceChip(
+                          label: const Text('学英语'),
+                          selected: _learnSubject == LearnSubjects.english,
+                          selectedColor: UltramanTheme.blue.withValues(alpha: 0.3),
+                          onSelected: (_) => _onLearnSubjectChanged(LearnSubjects.english),
+                        ),
+                      ],
+                    ),
+                    SizedBox(height: 16.h),
+                    Text('跟读顺序', style: TextStyle(fontSize: 14.sp, fontWeight: FontWeight.bold)),
+                    SizedBox(height: 8.h),
+                    Wrap(
+                      spacing: 8.w,
+                      runSpacing: 8.w,
+                      children: [
+                        ChoiceChip(
+                          label: const Text('按顺序读'),
+                          selected: _learnOrdered,
+                          selectedColor: UltramanTheme.blue.withValues(alpha: 0.3),
+                          onSelected: (_) => setState(() => _learnOrdered = true),
+                        ),
+                        ChoiceChip(
+                          label: const Text('随机读'),
+                          selected: !_learnOrdered,
+                          selectedColor: UltramanTheme.blue.withValues(alpha: 0.3),
+                          onSelected: (_) => setState(() => _learnOrdered = false),
+                        ),
+                      ],
+                    ),
+                    SizedBox(height: 4.h),
+                    Text(
+                      '拼音将按顺序读完所有拼音，或随机抽取跟读内容',
+                      style: TextStyle(fontSize: 11.sp, color: Colors.grey.shade600),
+                    ),
+                    SizedBox(height: 16.h),
+                    Text('每天跟读数量', style: TextStyle(fontSize: 14.sp, fontWeight: FontWeight.bold)),
+                    SizedBox(height: 8.h),
+                    Wrap(
+                      spacing: 8.w,
+                      runSpacing: 8.w,
+                      children: [
+                        for (final c in _presetLearnCounts)
+                          ChoiceChip(
+                            label: Text('$c 项'),
+                            selected: !_isCustomLearnCount && _learnCount == c,
+                            selectedColor: UltramanTheme.blue.withValues(alpha: 0.3),
+                            onSelected: (_) => setState(() {
+                              _isCustomLearnCount = false;
+                              _learnCount = c;
+                              _learnCountController.text = '$c';
+                            }),
+                          ),
+                        ChoiceChip(
+                          label: const Text('自定义'),
+                          selected: _isCustomLearnCount,
+                          selectedColor: UltramanTheme.blue.withValues(alpha: 0.3),
+                          onSelected: (_) => setState(() => _isCustomLearnCount = true),
+                        ),
+                      ],
+                    ),
+                    if (_isCustomLearnCount) ...[
+                      SizedBox(height: 8.h),
+                      TextField(
+                        controller: _learnCountController,
+                        keyboardType: TextInputType.number,
+                        decoration: InputDecoration(
+                          labelText: '自定义每天跟读数量',
+                          helperText: '大于 0 的整数',
+                          border: OutlineInputBorder(borderRadius: BorderRadius.circular(8.r)),
+                        ),
+                      ),
+                    ],
+                    SizedBox(height: 16.h),
+                    // 已移除语音判分：读完全部条目即发奖励，无需设置正确率阈值。
+                    Container(
+                      padding: EdgeInsets.symmetric(horizontal: 12.w, vertical: 8.h),
+                      decoration: BoxDecoration(
+                        color: UltramanTheme.blue.withValues(alpha: 0.08),
+                        borderRadius: BorderRadius.circular(8.r),
+                        border: Border.all(color: UltramanTheme.blue.withValues(alpha: 0.3)),
+                      ),
+                      child: Row(
+                        children: [
+                          Icon(Icons.emoji_events, color: UltramanTheme.blue, size: 18.r),
+                          SizedBox(width: 8.w),
+                          Expanded(
+                            child: Text(
+                              '跟读完成后（全部条目都读过）即发放奖励',
+                              style: TextStyle(fontSize: 12.sp, color: Colors.grey.shade700),
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
                     SizedBox(height: 16.h),
                   ],
                   // 自定义日期选择

@@ -60,3 +60,10 @@ generated-images/
 # WorkBuddy workspace data
 .workbuddy/
 flutter_*.log
+
+# 已废弃的第三方 SDK 压缩包（讯飞方案，非源码、体积大，勿入库）
+AIKit_AEE_Android_XTTS10_e2e44feff_2.1.3_SDK2.2.17_rc6.zip
+
+# 离线 TTS 神经网络模型（zh 116MB / en 75MB）超过代码托管平台单文件/ LFS 限制，
+# 不纳入 git；保留本地用于编译，克隆后需自行放置（见 README）。
+assets/tts_model/**/*.onnx

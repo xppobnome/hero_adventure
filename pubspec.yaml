@@ -58,6 +58,16 @@ dependencies:
   # The following adds the Cupertino Icons font to your application.
   # Use with the CupertinoIcons class for iOS style icons.
   cupertino_icons: ^1.0.8
+  # 语音播放 (学习跟读：TTS 朗读)
+  flutter_tts: ^4.2.5
+  # 语音识别 (学习跟读：采集跟读内容)
+  speech_to_text: ^7.5.0
+  # 离线神经网络 TTS (Sherpa-ONNX：中文 VITS + 英文 Piper 双模型)
+  sherpa_onnx: ^2.0.1
+  # 英文 Piper 模型音素化前端 (内置 espeak-ng-data，GPL-3.0 协议)
+  piper_phonemize: ^1.5.9
+  # 汉字转拼音 (中文词语 / 英文释义自动标注带声调拼音)
+  pinyin: ^3.3.0
 
 dev_dependencies:
   flutter_test:
@@ -115,6 +125,8 @@ flutter:
     - assets/lottie/
     - assets/lottie/beam_attack.json
     - assets/lottie/victory.json
+    - assets/tts_model/en/
+    - assets/tts_model/zh/
   # To add assets to your application, add an assets section, like this:
   # assets:
   #   - images/a_dot_burr.jpeg

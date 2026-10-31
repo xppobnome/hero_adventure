@@ -1,0 +1,48 @@
+sequenceDiagram
+    participant Kid as 儿童
+    participant View as LearnQuizView
+    participant Gen as LearnQuizGenerator
+    participant Speech as SpeechService
+    participant Judge as LearnJudge
+    participant Audio as AudioManager
+    participant CI as CheckInNotifier/FamilyProvider
+
+    Kid->>View: 进入学习闯关(task)
+    View->>Gen: generate()
+    Gen-->>View: List<LearnItem>
+
+    loop 每个条目
+        Kid->>View: 点「听一遍」
+        View->>Speech: speak(item.speakText, subject)
+        Speech-->>View: 播放完成
+
+        Kid->>View: 点「我读一遍」
+        View->>Speech: stopSpeaking() 后 recognize(localeId)
+        Speech-->>View: 识别文本 or null
+        alt 识别文本 != null
+            View->>Judge: isMatch(recognized, item)
+            Judge-->>View: true/false
+            alt true
+                View->>Audio: playVictory()
+                View->>View: 标记 correct，自动下一题
+            else false
+                View->>Audio: playError()
+                View->>View: 红色反馈，可「再读一遍」
+            end
+        else null
+            View->>View: 提示「没听清，再试一次」，不计错
+        end
+    end
+
+    View->>View: 全部完成，计算正确率
+    View->>View: isLearnPassed(correct, total, passPercent)
+    alt 达标 && 当日未完成
+        View->>Audio: playVictory()
+        View->>CI: addCheckIn(childId, taskId, rewardCoins, rewardExp)
+        View->>CI: updateChildExp(childId, rewardExp, rewardCoins)
+        View->>View: CelebrationEffect(「太棒了！」)
+    else 达标 && 当日已完成
+        View->>View: 仅练习，不重复发奖
+    else 未达标
+        View->>View: 提示「还差一点」，可「重做一遍」(重新抽题)
+    end

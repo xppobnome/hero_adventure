@@ -12,6 +12,12 @@
         android:maxSdkVersion="28"/>
     <uses-permission android:name="android.permission.READ_EXTERNAL_STORAGE"
         android:maxSdkVersion="32"/>
+    <!-- 学习跟读：录音权限 (speech_to_text 必需) -->
+    <uses-permission android:name="android.permission.RECORD_AUDIO"/>
+    <!-- 学习跟读：蓝牙耳机语音识别支持 (官方推荐) -->
+    <uses-permission android:name="android.permission.BLUETOOTH"/>
+    <uses-permission android:name="android.permission.BLUETOOTH_ADMIN"/>
+    <uses-permission android:name="android.permission.BLUETOOTH_CONNECT"/>
     <application
         android:label="儿童英雄闯关冒险"
         android:name="${applicationName}"
@@ -73,6 +79,14 @@
         <intent>
             <action android:name="android.intent.action.VIEW"/>
             <data android:scheme="http"/>
+        </intent>
+        <!-- speech_to_text：查询系统语音识别服务 (Android 11+ 包可见性) -->
+        <intent>
+            <action android:name="android.speech.RecognitionService"/>
+        </intent>
+        <!-- flutter_tts：查询系统 TTS 服务 (Android 11+ 包可见性) -->
+        <intent>
+            <action android:name="android.intent.action.TTS_SERVICE"/>
         </intent>
     </queries>
 </manifest>

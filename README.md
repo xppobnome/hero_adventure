@@ -97,12 +97,20 @@
 - [x] 数学闯关答题（Math Quiz），平板横屏左右分栏布局
 - [x] 预设任务模板（Preset Templates）多选快速建任务
 
+### 儿童端学习跟读系统（离线 TTS）
+- [x] 学拼音 / 识字 / 学英语 三学科跟读闯关（统一 `LearnItem` 字库 + `Task` 配置）
+- [x] **纯离线神经网络 TTS**（Sherpa-ONNX 中文 VITS + 英文 Piper 双模型），无需联网即可稳定朗读单字 / 单词
+- [x] 拼音用**汉字呼读音**朗读（如 b→「波」、n→「呢」），避免被误读成英文
+- [x] 中文补读「词语」并在词语上方标注带声调拼音；英文补读中文释义并标注美式音标（IPA）+ 释义拼音
+- [x] 「听一遍」极速响应：进页面预合成当前条目 + 在途合成去重，点击即时发声（无合成等待）
+- [x] 三学科闯关的任务配置与打卡记录均纳入全量备份（见下方数据同步引擎），换机 / 恢复不丢失
+
 ### 数据同步引擎
 - [x] 局域网面对面传输：二维码生成 / 扫描，一键推送 / 拉取完整 JSON 库
 - [x] WebDAV 云端同步：账号密码备份、Last-Modified 对比合并
 - [x] 退出 / 进入 App 时自动数据同步
 - [x] 强制同步开关：打卡、兑换、审核通过等关键操作自动上传
-- [x] 完整备份扩展：`.herobackup` 压缩包（含 data.json + 图片），备份 / 恢复
+- [x] 完整备份扩展：`.herobackup` 压缩包（含 data.json + 图片 + 拼音 / 识字 / 英语闯关任务与打卡记录），备份 / 恢复
 
 ### 视听特效与主题
 - [x] 奥特曼主题配色（经典红 `#E60012` / 太空银 / 计时器蓝 `#00A0E9`）
@@ -157,6 +165,8 @@
 ```bash
 flutter pub get
 ```
+
+> **离线 TTS 模型文件未纳入 git**：`assets/tts_model/zh/vits-zh-hf-fanchen-C.onnx`（约 116MB）与 `assets/tts_model/en/en_US-libritts_r-medium.onnx`（约 75MB）因超过代码托管平台的单文件 / LFS 体积限制，不随仓库分发。请将其下载并放入对应目录（保留 `tokens.txt` / `lexicon.txt` / `*.fst` 等已入库的支撑文件），离线发音方可生效；模型缺失时应用会自动降级为系统 TTS。模型来源：Sherpa-ONNX 官方模型库（`k2-fsa/sherpa-onnx` Releases / Hugging Face `csukuangfj`）。
 
 ### 运行
 

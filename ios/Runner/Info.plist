@@ -59,6 +59,10 @@
 		<string>UIInterfaceOrientationLandscapeLeft</string>
 		<string>UIInterfaceOrientationLandscapeRight</string>
 	</array>
+	<key>NSMicrophoneUsageDescription</key>
+	<string>用于跟读学习时采集小朋友的发音进行判分</string>
+	<key>NSSpeechRecognitionUsageDescription</key>
+	<string>用于识别小朋友的跟读内容，判断发音是否正确</string>
 	<key>UISupportedInterfaceOrientations~ipad</key>
 	<array>
 		<string>UIInterfaceOrientationPortrait</string>

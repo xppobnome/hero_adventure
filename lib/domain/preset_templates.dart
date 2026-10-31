@@ -14,6 +14,12 @@ class TaskTemplate {
   final bool requirePhoto;
   final String category; // 分类，用于引导界面分组展示
 
+  // ===== 学习跟读任务配置 (type == 'learn' 时生效) =====
+  final String learnSubject; // 'pinyin' / 'hanzi' / 'english'
+  final String learnScope; // 拼音 'shengmu/yunmu/zhengti/all'；识字/英语 'all'
+  final int learnCount; // 每天跟读条目数
+  final int learnPassPercent; // 通过阈值百分比
+
   const TaskTemplate({
     required this.title,
     required this.iconName,
@@ -22,6 +28,10 @@ class TaskTemplate {
     required this.type,
     this.requirePhoto = false,
     this.category = '',
+    this.learnSubject = 'pinyin',
+    this.learnScope = 'all',
+    this.learnCount = 10,
+    this.learnPassPercent = 80,
   });
 }
 
@@ -41,6 +51,9 @@ const List<TaskTemplate> taskTemplates = [
   TaskTemplate(title: '英语小英雄 (英语启蒙)', iconName: 'abc_monster', rewardCoins: 20, rewardExp: 80, type: 'daily', category: '学习'),
   TaskTemplate(title: '认真完成作业', iconName: 'homework_monster', rewardCoins: 25, rewardExp: 100, type: 'daily', category: '学习'),
   TaskTemplate(title: '每日数学题挑战', iconName: 'math_monster', rewardCoins: 20, rewardExp: 80, type: 'math', category: '学习'),
+  TaskTemplate(title: '每日拼音跟读', iconName: 'write_monster', rewardCoins: 20, rewardExp: 80, type: 'learn', category: '学习', learnSubject: 'pinyin', learnScope: 'all', learnCount: 10, learnPassPercent: 80),
+  TaskTemplate(title: '每日识字跟读', iconName: 'book_monster', rewardCoins: 20, rewardExp: 80, type: 'learn', category: '学习', learnSubject: 'hanzi', learnScope: 'all', learnCount: 10, learnPassPercent: 80),
+  TaskTemplate(title: '每日英语跟读', iconName: 'abc_monster', rewardCoins: 20, rewardExp: 80, type: 'learn', category: '学习', learnSubject: 'english', learnScope: 'all', learnCount: 10, learnPassPercent: 60),
 
   // ===== 运动锻炼 =====
   TaskTemplate(title: '户外运动小英雄 (跳绳/跑步)', iconName: 'run_monster', rewardCoins: 20, rewardExp: 80, type: 'daily', category: '运动'),
@@ -106,6 +119,10 @@ Task taskFromTemplate(TaskTemplate t, String id) {
     mathOp: 'mix',
     mathCount: 10,
     mathPassPercent: 100,
+    learnSubject: t.learnSubject,
+    learnScope: t.learnScope,
+    learnCount: t.learnCount,
+    learnPassPercent: t.learnPassPercent,
   );
 }
 

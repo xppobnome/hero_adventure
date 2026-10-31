@@ -61,34 +61,47 @@ class ChildDashboard extends ConsumerWidget {
                 child: Column(
                   mainAxisSize: MainAxisSize.min,
                   children: [
-                    Row(
-                      mainAxisAlignment: MainAxisAlignment.center,
+                    // LV + 能量币合并展示；用 Flexible 包裹避免窄卡片下横向溢出。
+                    Wrap(
+                      alignment: WrapAlignment.center,
+                      crossAxisAlignment: WrapCrossAlignment.center,
+                      spacing: 6,
+                      runSpacing: 2,
                       children: [
-                        const Icon(Icons.star, color: UltramanTheme.gold, size: 18),
-                        const SizedBox(width: 6),
-                        Text(
-                          'LV.${stats.level}',
-                          style: const TextStyle(
-                            color: Colors.white,
-                            fontSize: 20,
-                            fontWeight: FontWeight.bold,
-                          ),
+                        Row(
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            const Icon(Icons.star, color: UltramanTheme.gold, size: 18),
+                            const SizedBox(width: 6),
+                            Text(
+                              'LV.${stats.level}',
+                              style: const TextStyle(
+                                color: Colors.white,
+                                fontSize: 20,
+                                fontWeight: FontWeight.bold,
+                              ),
+                            ),
+                          ],
                         ),
-                        const SizedBox(width: 16),
-                        const Icon(Icons.bolt, color: UltramanTheme.blue, size: 18),
-                        const SizedBox(width: 4),
-                        Text(
-                          '${stats.coins}',
-                          style: const TextStyle(
-                            color: UltramanTheme.gold,
-                            fontSize: 18,
-                            fontWeight: FontWeight.bold,
-                          ),
-                        ),
-                        const SizedBox(width: 3),
-                        const Text(
-                          '能量币',
-                          style: TextStyle(color: Colors.white70, fontSize: 12),
+                        Row(
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            const Icon(Icons.bolt, color: UltramanTheme.blue, size: 18),
+                            const SizedBox(width: 4),
+                            Text(
+                              '${stats.coins}',
+                              style: const TextStyle(
+                                color: UltramanTheme.gold,
+                                fontSize: 18,
+                                fontWeight: FontWeight.bold,
+                              ),
+                            ),
+                            const SizedBox(width: 3),
+                            const Text(
+                              '能量币',
+                              style: TextStyle(color: Colors.white70, fontSize: 12),
+                            ),
+                          ],
                         ),
                       ],
                     ),
