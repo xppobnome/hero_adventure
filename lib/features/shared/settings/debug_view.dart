@@ -7,6 +7,7 @@ import '../../../domain/hero_system.dart'
     show expForLevel, levelFromExp, maxLevel, heroCatalog;
 import '../../../domain/providers/family_provider.dart';
 import '../../../domain/providers/theme_provider.dart';
+import 'debug_log_settings_card.dart';
 
 /// 调试界面（隐藏入口：关于页连续点击软件版本 6 次进入）。
 ///
@@ -89,6 +90,13 @@ class _DebugViewState extends ConsumerState<DebugView> {
                 SizedBox(height: 12.h),
                 for (final child in family.children)
                   _DebugChildCard(childId: child.id, name: child.name),
+                SizedBox(height: 24.h),
+                Text(
+                  '日志',
+                  style: TextStyle(fontSize: 18.sp, fontWeight: FontWeight.bold),
+                ),
+                SizedBox(height: 12.h),
+                const DebugLogSettingsCard(),
                 SizedBox(height: 24.h),
                 _buildDeviceCard(),
                 SizedBox(height: 12.h),

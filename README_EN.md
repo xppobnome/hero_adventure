@@ -48,8 +48,9 @@ A cross-platform (phone / tablet) **family habit-building app for children**. Da
 - **Fully offline neural TTS** (Sherpa-ONNX Chinese VITS + English Piper dual models) — **Sherpa end-to-end**, for Chinese-character / English reading, stable single-character / single-word playback with no network.
 - **The Pinyin module now plays a teaching video instead of TTS**: a bundled MP4 auto-plays on entry (pause / scrub supported); finishing the video (playing to the end) grants the reward — the "完成学习" button has been removed. Video source: Bilibili BV1Fe411N7my, uploaded by UP "续命星期五" (attributed in small print at the bottom of the card as "视频来自B站up主续命星期五", tappable to open the original; removable on takedown request).
 - Chinese: also reads the example word and shows its tone-marked pinyin above the word. English: also reads the Chinese meaning with IPA (American) + pinyin of the meaning.
-- **Instant "Listen once"**: on page entry the app pre-synthesizes **all** read-aloud segments into cache (+ in-flight de-duplication), so tapping plays immediately; the speaker icon animates while playing / loading.
+- **Instant "Listen once"**: on page entry the app pre-synthesizes **all** read-aloud segments into cache (+ in-flight de-duplication), so tapping plays immediately; the speaker icon animates while playing / loading. Background pre-synthesis runs through a **serial queue** to avoid flooding the TTS isolate with a burst of requests (which caused synthesis timeouts).
 - The learning tasks (Pinyin / Chinese / English) and their check-in records are all included in the full backup (see Data Sync) — survive device switch / restore.
+- Expanded word banks: **404 Chinese characters** (animals / food / weather & seasons / clothing / people / school supplies / transport / nature, etc.) and **477 English words** (weekdays & months / jobs / sports / weather & seasons / emotions / clothing / fruits & vegetables / places / abstract nouns / adverbs & conjunctions, etc.); Pinyin stays at the complete 63-item syllabus set.
 
 ### Data Sync Engine
 - LAN face-to-face transfer (QR generate / scan).
@@ -74,7 +75,7 @@ A cross-platform (phone / tablet) **family habit-building app for children**. Da
 flutter pub get
 ```
 
-> **Offline TTS models are NOT in git**: `assets/tts_model/zh/vits-zh-hf-fanchen-C.onnx` (~116MB) and `assets/tts_model/en/en_US-libritts_r-medium.onnx` (~75MB) exceed code-hosting single-file / LFS limits, so they are not distributed with the repo. Download them and place into the matching folders (keep the already-tracked `tokens.txt` / `lexicon.txt` / `*.fst` support files) for offline pronunciation to work; the app gracefully falls back to system TTS when the models are missing. Model source: Sherpa-ONNX official model zoo (`k2-fsa/sherpa-onnx` Releases / Hugging Face `csukuangfj`).
+> **Offline TTS models are fetched on demand (not bundled, not in git)**: the Chinese model `vits-zh-hf-fanchen-C.onnx` (~116MB) and English model `en_US-libritts_r-medium.onnx` (~75MB) are too large to bundle, so they are **downloaded on first use from a Cloudflare R2 CDN** (`tts.cloudvl.de5.net`, see `TtsModelStore` in `lib/core/services/sherpa_tts_service.dart`). The first time you enter the Chinese-character / English module, a "need to download speech resources" dialog with a progress bar appears; subsequent entries are instant. If the remote download fails (no network), the app gracefully falls back to system TTS. Model source: Sherpa-ONNX official model zoo (`k2-fsa/sherpa-onnx` Releases / Hugging Face `csukuangfj`).
 
 ### Run
 ```bash

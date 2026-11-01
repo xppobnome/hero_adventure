@@ -104,7 +104,6 @@ flutter:
     - assets/audio/transform.mp3
     - assets/audio/victory.mp3
     - assets/audio/启动音效.mp3
-    - assets/video/pinyin_read_along.mp4
     - assets/heroes/
     - assets/heroes/ace/
     - assets/heroes/ace/ace_skill.mp3
@@ -128,8 +127,13 @@ flutter:
     - assets/lottie/
     - assets/lottie/beam_attack.json
     - assets/lottie/victory.json
-    - assets/tts_model/en/
-    - assets/tts_model/zh/
+    # 离线 TTS 模型 (zh 116MB / en 75MB) 已改为按需下载 (Cloudflare R2)，
+    # 不再打包进 APK。下载逻辑见 lib/core/services/sherpa_tts_service.dart。
+    # 注意：assets/tts_model/ 目录已从打包清单移除，本地仍保留源码目录用于
+    # 上传到 R2；如需本地调试 (不走网络)，可临时恢复以下条目。
+    # - assets/tts_model/en/
+    # - assets/tts_model/zh/
+    - assets/video/pinyin_read_along.mp4
   # To add assets to your application, add an assets section, like this:
   # assets:
   #   - images/a_dot_burr.jpeg

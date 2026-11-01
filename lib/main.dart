@@ -7,6 +7,7 @@ import 'package:flutter_screenutil/flutter_screenutil.dart';
 import 'package:flutter_displaymode/flutter_displaymode.dart';
 import 'package:flutter_localizations/flutter_localizations.dart'; // 引入本地化
 import 'core/utils/audio_manager.dart';
+import 'core/utils/app_logger.dart';
 import 'core/utils/data_sync_checker.dart';
 import 'core/utils/update_service.dart';
 import 'data/repositories/local_storage_repo.dart';
@@ -53,6 +54,9 @@ void main() async {
   HttpOverrides.global = MyHttpOverrides();
   final storageRepo = LocalStorageRepo();
   await storageRepo.init();
+
+  // 读取日志开关，初始化全局日志工具（家长控制台 → 设置 → 开启日志）。
+  AppLogger.enabled = storageRepo.getDebugLogEnabled();
 
   // 设置最高刷新率：让 App 使用手机屏幕支持的最高刷新率 (如 120/165Hz)。
   // 失败时静默降级 (部分设备/平台不支持时不影响启动)。
@@ -134,7 +138,7 @@ class HeroAdventureApp extends StatelessWidget {
             GlobalCupertinoLocalizations.delegate,
           ],
           supportedLocales: const [Locale('zh', 'CN')],
-          home:  SplashGate(),
+          home: SplashGate(),
         );
       },
     );
@@ -174,7 +178,9 @@ class InitialRouteWrapper extends ConsumerStatefulWidget {
   @override
   ConsumerState<InitialRouteWrapper> createState() =>
       _InitialRouteWrapperState();
-}class _InitialRouteWrapperState extends ConsumerState<InitialRouteWrapper> {
+}
+
+class _InitialRouteWrapperState extends ConsumerState<InitialRouteWrapper> {
   late final AppLifecycleListener _lifecycleListener;
 
   @override
@@ -259,7 +265,9 @@ class InitialRouteWrapper extends ConsumerStatefulWidget {
     final familyProfile = ref.watch(familyProfileProvider);
     final deviceRole = ref.watch(deviceRoleProvider);
 
-    debugPrint('[路由] InitialRouteWrapper build: deviceRole=$deviceRole, hasFamily=${familyProfile != null}');
+    debugPrint(
+      '[路由] InitialRouteWrapper build: deviceRole=$deviceRole, hasFamily=${familyProfile != null}',
+    );
 
     // 1. 无数据，进入初始化
     if (familyProfile == null) return const FamilySetupView();

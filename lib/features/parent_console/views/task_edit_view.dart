@@ -48,13 +48,21 @@ class _TaskEditViewState extends ConsumerState<TaskEditView> {
   // 学习跟读任务配置
   String _learnSubject = 'pinyin'; // pinyin / hanzi / english
   String _learnScope = 'all'; // 拼音本轮统一 'all' (已移除声母/韵母分类)
-  bool _learnOrdered = false; // true=按顺序读全部拼音，false=随机读
-  int _learnCount = 10; // 每天跟读条目数
+  int _learnCount = 10; // 每天跟读条目数 (识字/英语可配置，拼音固定读全部)
   int _learnPassPercent = 80; // 通过阈值百分比 (已无判分，保留字段兼容旧数据)
+  bool _learnOrdered = false; // 跟读顺序 (识字/英语可配置；拼音固定按顺序读全部)
   bool _isCustomLearnCount = false; // 是否使用自定义跟读数量
   final TextEditingController _learnCountController = TextEditingController();
 
-  static const List<String> _weekdays = ['周一', '周二', '周三', '周四', '周五', '周六', '周日'];
+  static const List<String> _weekdays = [
+    '周一',
+    '周二',
+    '周三',
+    '周四',
+    '周五',
+    '周六',
+    '周日',
+  ];
 
   /// 可选怪兽图标清单（名称 + 中文标签）。
   static const List<(String, String)> _monsterIcons = [
@@ -88,15 +96,21 @@ class _TaskEditViewState extends ConsumerState<TaskEditView> {
   /// 常见预设答对阈值 (百分比)。
   static const List<int> _presetPassPercents = [60, 80, 100];
 
-  /// 常见预设跟读数量。
+  /// 常见预设跟读数量 (识字/英语可选)。
   static const List<int> _presetLearnCounts = [5, 10, 20];
 
   @override
   void initState() {
     super.initState();
-    _titleController = TextEditingController(text: widget.taskToEdit?.title ?? '');
-    _coinsController = TextEditingController(text: widget.taskToEdit?.rewardCoins.toString() ?? '10');
-    _expController = TextEditingController(text: widget.taskToEdit?.rewardExp.toString() ?? '50');
+    _titleController = TextEditingController(
+      text: widget.taskToEdit?.title ?? '',
+    );
+    _coinsController = TextEditingController(
+      text: widget.taskToEdit?.rewardCoins.toString() ?? '10',
+    );
+    _expController = TextEditingController(
+      text: widget.taskToEdit?.rewardExp.toString() ?? '50',
+    );
     if (widget.taskToEdit != null) {
       _selectedType = widget.taskToEdit!.type;
       // math / learn 类型由独立开关 (_isMathTask/_isLearnTask) 控制，
@@ -117,9 +131,9 @@ class _TaskEditViewState extends ConsumerState<TaskEditView> {
       _isLearnTask = widget.taskToEdit!.isLearnTask;
       _learnSubject = widget.taskToEdit!.learnSubject;
       _learnScope = 'all'; // 拼音本轮统一 all，忽略旧数据可能存在的 shengmu/yunmu 分类
-      _learnOrdered = widget.taskToEdit!.learnOrdered;
       _learnCount = widget.taskToEdit!.learnCount;
       _learnPassPercent = widget.taskToEdit!.learnPassPercent;
+      _learnOrdered = widget.taskToEdit!.learnOrdered;
       _isCustomLearnCount = !_presetLearnCounts.contains(_learnCount);
       _learnCountController.text = _learnCount.toString();
       // 自定义打卡周期
@@ -236,7 +250,10 @@ class _TaskEditViewState extends ConsumerState<TaskEditView> {
                 children: [
                   Icon(icon, size: 20.sp, color: const Color(0xFF00A0E9)),
                   const SizedBox(width: 8),
-                  Text(title, style: const TextStyle(fontWeight: FontWeight.w600)),
+                  Text(
+                    title,
+                    style: const TextStyle(fontWeight: FontWeight.w600),
+                  ),
                 ],
               )
             : Row(
@@ -248,7 +265,11 @@ class _TaskEditViewState extends ConsumerState<TaskEditView> {
                       color: const Color(0xFF00A0E9).withValues(alpha: 0.1),
                       borderRadius: BorderRadius.circular(8.r),
                     ),
-                    child: Icon(icon, size: 20.sp, color: const Color(0xFF00A0E9)),
+                    child: Icon(
+                      icon,
+                      size: 20.sp,
+                      color: const Color(0xFF00A0E9),
+                    ),
                   ),
                   SizedBox(width: 12.w),
                   Expanded(
@@ -353,7 +374,12 @@ class _TaskEditViewState extends ConsumerState<TaskEditView> {
         final custom = int.tryParse(_customRangeController.text.trim());
         if (custom == null || custom <= 0) {
           ScaffoldMessenger.of(context).showSnackBar(
-            SnackBar(content: Text('请输入有效的数值范围 (大于 0 的整数)', style: TextStyle(fontSize: 14.sp))),
+            SnackBar(
+              content: Text(
+                '请输入有效的数值范围 (大于 0 的整数)',
+                style: TextStyle(fontSize: 14.sp),
+              ),
+            ),
           );
           return;
         }
@@ -366,7 +392,12 @@ class _TaskEditViewState extends ConsumerState<TaskEditView> {
         final countVal = int.tryParse(_mathCountController.text.trim());
         if (countVal == null || countVal <= 0) {
           ScaffoldMessenger.of(context).showSnackBar(
-            SnackBar(content: Text('请输入有效的每天题目数量 (大于 0 的整数)', style: TextStyle(fontSize: 14.sp))),
+            SnackBar(
+              content: Text(
+                '请输入有效的每天题目数量 (大于 0 的整数)',
+                style: TextStyle(fontSize: 14.sp),
+              ),
+            ),
           );
           return;
         }
@@ -379,38 +410,55 @@ class _TaskEditViewState extends ConsumerState<TaskEditView> {
         final passVal = int.tryParse(_passPercentController.text.trim());
         if (passVal == null || passVal < 1 || passVal > 100) {
           ScaffoldMessenger.of(context).showSnackBar(
-            SnackBar(content: Text('请输入有效的答对阈值 (1~100 的整数)', style: TextStyle(fontSize: 14.sp))),
+            SnackBar(
+              content: Text(
+                '请输入有效的答对阈值 (1~100 的整数)',
+                style: TextStyle(fontSize: 14.sp),
+              ),
+            ),
           );
           return;
         }
         finalPassPercent = passVal;
       }
 
-      // 读取并校验每天跟读数量 (阈值已移除，读完全部即发奖)
+      // 学习跟读数量：识字/英语可配置 (预设或自定义)；拼音固定读完全部。
       int finalLearnCount = _learnCount;
-      int finalLearnPassPercent = _learnPassPercent;
-      if (_isLearnTask) {
+      if (_isLearnTask && _learnSubject != LearnSubjects.pinyin) {
         final learnCountVal = int.tryParse(_learnCountController.text.trim());
         if (learnCountVal == null || learnCountVal <= 0) {
           ScaffoldMessenger.of(context).showSnackBar(
-            SnackBar(content: Text('请输入有效的每天跟读数量 (大于 0 的整数)', style: TextStyle(fontSize: 14.sp))),
+            SnackBar(
+              content: Text(
+                '请输入有效的每天跟读数量 (大于 0 的整数)',
+                style: TextStyle(fontSize: 14.sp),
+              ),
+            ),
           );
           return;
         }
         finalLearnCount = learnCountVal;
       }
+      final int finalLearnPassPercent = _learnPassPercent;
 
       // 自定义打卡周期校验
       if (_selectedType == 'custom_range') {
         if (_rangeStart == null || _rangeEnd == null) {
           ScaffoldMessenger.of(context).showSnackBar(
-            SnackBar(content: Text('请选择打卡周期的起始和结束日期', style: TextStyle(fontSize: 14.sp))),
+            SnackBar(
+              content: Text(
+                '请选择打卡周期的起始和结束日期',
+                style: TextStyle(fontSize: 14.sp),
+              ),
+            ),
           );
           return;
         }
         if (_rangeEnd!.isBefore(_rangeStart!)) {
           ScaffoldMessenger.of(context).showSnackBar(
-            SnackBar(content: Text('结束日期不能早于起始日期', style: TextStyle(fontSize: 14.sp))),
+            SnackBar(
+              content: Text('结束日期不能早于起始日期', style: TextStyle(fontSize: 14.sp)),
+            ),
           );
           return;
         }
@@ -426,7 +474,8 @@ class _TaskEditViewState extends ConsumerState<TaskEditView> {
       if (_selectedType == 'custom_range') {
         finalRangeStart = _formatDate(_rangeStart);
         finalRangeEnd = _formatDate(_rangeEnd);
-      } else if (_selectedType == 'checkin_week' || _selectedType == 'checkin_month') {
+      } else if (_selectedType == 'checkin_week' ||
+          _selectedType == 'checkin_month') {
         final days = _selectedType == 'checkin_week' ? 7 : 30;
         final existingStart = widget.taskToEdit?.rangeStart ?? '';
         final existingEnd = widget.taskToEdit?.rangeEnd ?? '';
@@ -447,7 +496,8 @@ class _TaskEditViewState extends ConsumerState<TaskEditView> {
         rewardCoins: int.parse(_coinsController.text),
         rewardExp: int.parse(_expController.text),
         type: finalType,
-        requirePhoto: _requirePhoto,
+        // 学习跟读任务强制不拍照 (语音交互无需拍照凭证)。
+        requirePhoto: _isLearnTask ? false : _requirePhoto,
         selectedDays: _selectedType == 'custom_days' ? _selectedDays : const [],
         rangeStart: finalRangeStart,
         rangeEnd: finalRangeEnd,
@@ -459,7 +509,10 @@ class _TaskEditViewState extends ConsumerState<TaskEditView> {
         learnScope: _isLearnTask ? 'all' : 'all',
         learnCount: _isLearnTask ? finalLearnCount : 10,
         learnPassPercent: _isLearnTask ? finalLearnPassPercent : 80,
-        learnOrdered: _isLearnTask ? _learnOrdered : false,
+        // 拼音固定按顺序读完全部；识字/英语可配置跟读顺序。
+        learnOrdered: _isLearnTask && _learnSubject != LearnSubjects.pinyin
+            ? _learnOrdered
+            : true,
       );
 
       if (widget.taskToEdit == null) {
@@ -470,7 +523,12 @@ class _TaskEditViewState extends ConsumerState<TaskEditView> {
 
       Navigator.pop(context);
       ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text(widget.taskToEdit == null ? '新任务已下达！' : '任务已更新', style: TextStyle(fontSize: 14.sp))),
+        SnackBar(
+          content: Text(
+            widget.taskToEdit == null ? '新任务已下达！' : '任务已更新',
+            style: TextStyle(fontSize: 14.sp),
+          ),
+        ),
       );
     }
   }
@@ -479,520 +537,746 @@ class _TaskEditViewState extends ConsumerState<TaskEditView> {
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(
-        title: Text(widget.taskToEdit == null ? '下达新防卫任务' : '编辑任务', style: TextStyle(fontSize: 20.sp)),
+        title: Text(
+          widget.taskToEdit == null ? '下达新防卫任务' : '编辑任务',
+          style: TextStyle(fontSize: 20.sp),
+        ),
         backgroundColor: Colors.grey.shade900,
       ),
       body: SafeArea(
         top: false,
         child: SingleChildScrollView(
           padding: EdgeInsets.all(24.w),
-        child: Center(
-          child: Container(
-            constraints: BoxConstraints(maxWidth: 600.w),
-            child: Form(
-              key: _formKey,
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.stretch,
-                children: [
-                  TextFormField(
-                    controller: _titleController,
-                    decoration: InputDecoration(
-                      labelText: '任务名称 (例：打败蛀牙怪兽)',
-                      border: OutlineInputBorder(borderRadius: BorderRadius.circular(8.r)),
+          child: Center(
+            child: Container(
+              constraints: BoxConstraints(maxWidth: 600.w),
+              child: Form(
+                key: _formKey,
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.stretch,
+                  children: [
+                    TextFormField(
+                      controller: _titleController,
+                      decoration: InputDecoration(
+                        labelText: '任务名称 (例：打败蛀牙怪兽)',
+                        border: OutlineInputBorder(
+                          borderRadius: BorderRadius.circular(8.r),
+                        ),
+                      ),
+                      validator: (v) => v!.isEmpty ? '任务名称不能为空' : null,
                     ),
-                    validator: (v) => v!.isEmpty ? '任务名称不能为空' : null,
-                  ),
-                  SizedBox(height: 20.h),
-                  // 怪兽图标选择
-                  Text('选择怪兽形象', style: TextStyle(fontSize: 14.sp, fontWeight: FontWeight.bold)),
-                  SizedBox(height: 8.h),
-                  _buildMonsterPicker(),
-                  SizedBox(height: 24.h),
-                  Row(
-                    children: [
-                      Expanded(
-                        child: TextFormField(
-                          controller: _expController,
-                          keyboardType: TextInputType.number,
-                          onChanged: (_) => setState(() {}),
-                          decoration: InputDecoration(
-                            labelText: '奖励经验值 (EXP)',
-                            border: OutlineInputBorder(borderRadius: BorderRadius.circular(8.r)),
-                          ),
-                        ),
-                      ),
-                      SizedBox(width: 16.w),
-                      Expanded(
-                        child: TextFormField(
-                          controller: _coinsController,
-                          keyboardType: TextInputType.number,
-                          onChanged: (_) => setState(() {}),
-                          decoration: InputDecoration(
-                            labelText: '奖励能量币 (Coins)',
-                            border: OutlineInputBorder(borderRadius: BorderRadius.circular(8.r)),
-                          ),
-                        ),
-                      ),
-                    ],
-                  ),
-                  SizedBox(height: 24.h),
-                  DropdownButtonFormField<String>(
-                    value: _selectedType,
-                    isExpanded: true,
-                    icon: const Icon(Icons.arrow_drop_down_circle, color: Color(0xFF00A0E9), size: 22),
-                    dropdownColor: Colors.white,
-                    borderRadius: BorderRadius.circular(12.r),
-                    menuMaxHeight: 420.h,
-                    style: TextStyle(fontSize: 15.sp, color: Colors.grey.shade900, fontWeight: FontWeight.w500),
-                    decoration: InputDecoration(
-                      labelText: '任务周期',
-                      labelStyle: TextStyle(fontSize: 14.sp, color: Colors.grey.shade600),
-                      filled: true,
-                      fillColor: const Color(0xFFF5F8FC),
-                      contentPadding: EdgeInsets.symmetric(horizontal: 16.w, vertical: 12.h),
-                      prefixIcon: const Icon(Icons.event_repeat, color: Color(0xFF00A0E9), size: 22),
-                      enabledBorder: OutlineInputBorder(
-                        borderRadius: BorderRadius.circular(12.r),
-                        borderSide: BorderSide(color: const Color(0xFF00A0E9).withValues(alpha: 0.4), width: 1.2),
-                      ),
-                      focusedBorder: OutlineInputBorder(
-                        borderRadius: BorderRadius.circular(12.r),
-                        borderSide: const BorderSide(color: Color(0xFF00A0E9), width: 1.8),
-                      ),
-                    ),
-                    items: _cycleItems(),
-                    selectedItemBuilder: (context) => _cycleItems(
-                      selected: true,
-                    ).map((e) => e.child!).toList(),
-                    onChanged: (v) => setState(() => _selectedType = v!),
-                  ),
-                  SizedBox(height: 16.h),
-                  // 每日数学题学习任务 (独立入口，与周期类型区分)
-                  SwitchListTile(
-                    title: Text('每日数学题 (学习闯关)', style: TextStyle(fontSize: 16.sp, fontWeight: FontWeight.bold)),
-                    subtitle: Text('每天做数学题，儿童作答后获得奖励', style: TextStyle(fontSize: 13.sp)),
-                    value: _isMathTask,
-                    activeColor: UltramanTheme.blue,
-                    onChanged: (v) => setState(() {
-                      _isMathTask = v;
-                      // 与学习跟读互斥：打开数学题时关闭学习跟读
-                      if (v) _isLearnTask = false;
-                      // 打开数学题开关时，若奖励仍为默认值，则填入推荐预设
-                      if (v && _expController.text == '50' && _coinsController.text == '10') {
-                        _expController.text = '30';
-                        _coinsController.text = '15';
-                      }
-                    }),
-                    contentPadding: EdgeInsets.zero,
-                  ),
-                  SizedBox(height: 16.h),
-                  // 数学题任务配置
-                  if (_isMathTask) ...[
-                    // 奖励说明 (发放币 + 经验，可修改)
-                    Container(
-                      padding: EdgeInsets.symmetric(horizontal: 12.w, vertical: 8.h),
-                      decoration: BoxDecoration(
-                        color: UltramanTheme.blue.withValues(alpha: 0.08),
-                        borderRadius: BorderRadius.circular(8.r),
-                        border: Border.all(color: UltramanTheme.blue.withValues(alpha: 0.3)),
-                      ),
-                      child: Row(
-                        children: [
-                          Icon(Icons.card_giftcard, color: UltramanTheme.blue, size: 18.r),
-                          SizedBox(width: 8.w),
-                          Expanded(
-                            child: Text(
-                              '奖励类型：发放 ${_expController.text} 经验 + ${_coinsController.text} 能量币（可修改上方奖励值）',
-                              style: TextStyle(fontSize: 12.sp, color: Colors.grey.shade700),
-                            ),
-                          ),
-                        ],
-                      ),
-                    ),
-                    SizedBox(height: 16.h),
-                    Text('题目难度 (数值范围)', style: TextStyle(fontSize: 14.sp, fontWeight: FontWeight.bold)),
-                    SizedBox(height: 8.h),
-                    // 预设范围 + 自定义
-                    Wrap(
-                      spacing: 8.w,
-                      runSpacing: 8.w,
-                      children: [
-                        for (final r in _presetRanges)
-                          ChoiceChip(
-                            label: Text('$r 以内'),
-                            selected: !_isCustomRange && _mathRange == r,
-                            selectedColor: UltramanTheme.blue.withValues(alpha: 0.3),
-                            onSelected: (_) => setState(() {
-                              _isCustomRange = false;
-                              _mathRange = r;
-                            }),
-                          ),
-                        ChoiceChip(
-                          label: const Text('自定义'),
-                          selected: _isCustomRange,
-                          selectedColor: UltramanTheme.blue.withValues(alpha: 0.3),
-                          onSelected: (_) => setState(() => _isCustomRange = true),
-                        ),
-                      ],
-                    ),
-                    // 自定义范围输入框
-                    if (_isCustomRange) ...[
-                      SizedBox(height: 8.h),
-                      TextField(
-                        controller: _customRangeController,
-                        keyboardType: TextInputType.number,
-                        decoration: InputDecoration(
-                          labelText: '自定义数值上限 (如 15、30、100)',
-                          helperText: '结果与操作数均不超过该数值',
-                          border: OutlineInputBorder(borderRadius: BorderRadius.circular(8.r)),
-                        ),
-                      ),
-                    ],
-                    SizedBox(height: 8.h),
-                    Text('运算类型', style: TextStyle(fontSize: 14.sp, fontWeight: FontWeight.bold)),
-                    SizedBox(height: 8.h),
-                    Wrap(
-                      spacing: 8.w,
-                      children: [
-                        ChoiceChip(
-                          label: const Text('加法'),
-                          selected: _mathOp == 'add',
-                          selectedColor: UltramanTheme.blue.withValues(alpha: 0.3),
-                          onSelected: (_) => setState(() => _mathOp = 'add'),
-                        ),
-                        ChoiceChip(
-                          label: const Text('减法'),
-                          selected: _mathOp == 'sub',
-                          selectedColor: UltramanTheme.blue.withValues(alpha: 0.3),
-                          onSelected: (_) => setState(() => _mathOp = 'sub'),
-                        ),
-                        ChoiceChip(
-                          label: const Text('加减混合'),
-                          selected: _mathOp == 'mix',
-                          selectedColor: UltramanTheme.blue.withValues(alpha: 0.3),
-                          onSelected: (_) => setState(() => _mathOp = 'mix'),
-                        ),
-                      ],
-                    ),
-                    SizedBox(height: 16.h),
-                    Text('每天题目数量', style: TextStyle(fontSize: 14.sp, fontWeight: FontWeight.bold)),
-                    SizedBox(height: 8.h),
-                    // 预设数量 + 自定义
-                    Wrap(
-                      spacing: 8.w,
-                      runSpacing: 8.w,
-                      children: [
-                        for (final c in _presetCounts)
-                          ChoiceChip(
-                            label: Text('$c 题'),
-                            selected: !_isCustomCount && _mathCount == c,
-                            selectedColor: UltramanTheme.blue.withValues(alpha: 0.3),
-                            onSelected: (_) => setState(() {
-                              _isCustomCount = false;
-                              _mathCount = c;
-                              _mathCountController.text = '$c';
-                            }),
-                          ),
-                        ChoiceChip(
-                          label: const Text('自定义'),
-                          selected: _isCustomCount,
-                          selectedColor: UltramanTheme.blue.withValues(alpha: 0.3),
-                          onSelected: (_) => setState(() => _isCustomCount = true),
-                        ),
-                      ],
-                    ),
-                    // 自定义题目数量输入框
-                    if (_isCustomCount) ...[
-                      SizedBox(height: 8.h),
-                      TextField(
-                        controller: _mathCountController,
-                        keyboardType: TextInputType.number,
-                        decoration: InputDecoration(
-                          labelText: '自定义每天题目数量',
-                          helperText: '大于 0 的整数',
-                          border: OutlineInputBorder(borderRadius: BorderRadius.circular(8.r)),
-                        ),
-                      ),
-                    ],
-                    SizedBox(height: 16.h),
-                    Text('答对多少题获得奖励', style: TextStyle(fontSize: 14.sp, fontWeight: FontWeight.bold)),
-                    SizedBox(height: 8.h),
-                    // 预设阈值 + 自定义
-                    Wrap(
-                      spacing: 8.w,
-                      runSpacing: 8.w,
-                      children: [
-                        for (final p in _presetPassPercents)
-                          ChoiceChip(
-                            label: Text('$p%'),
-                            selected: !_isCustomPass && _mathPassPercent == p,
-                            selectedColor: UltramanTheme.blue.withValues(alpha: 0.3),
-                            onSelected: (_) => setState(() {
-                              _isCustomPass = false;
-                              _mathPassPercent = p;
-                              _passPercentController.text = '$p';
-                            }),
-                          ),
-                        ChoiceChip(
-                          label: const Text('自定义'),
-                          selected: _isCustomPass,
-                          selectedColor: UltramanTheme.blue.withValues(alpha: 0.3),
-                          onSelected: (_) => setState(() => _isCustomPass = true),
-                        ),
-                      ],
-                    ),
-                    // 自定义阈值输入框
-                    if (_isCustomPass) ...[
-                      SizedBox(height: 8.h),
-                      TextField(
-                        controller: _passPercentController,
-                        keyboardType: TextInputType.number,
-                        decoration: InputDecoration(
-                          labelText: '自定义答对百分比',
-                          helperText: '1~100 的整数，如 75 表示答对 75% 即发奖励',
-                          border: OutlineInputBorder(borderRadius: BorderRadius.circular(8.r)),
-                        ),
-                      ),
-                    ],
-                    SizedBox(height: 16.h),
-                  ],
-                  // 每日学习跟读任务 (拼音/识字/英语，与数学题互斥)
-                  SwitchListTile(
-                    title: Text('每日学习跟读 (拼音/识字/英语)', style: TextStyle(fontSize: 16.sp, fontWeight: FontWeight.bold)),
-                    subtitle: Text('软件读一遍，孩子跟读一遍，语音判分后获得奖励', style: TextStyle(fontSize: 13.sp)),
-                    value: _isLearnTask,
-                    activeColor: UltramanTheme.blue,
-                    onChanged: (v) => setState(() {
-                      _isLearnTask = v;
-                      // 与数学题互斥：打开学习跟读时关闭数学题
-                      if (v) _isMathTask = false;
-                      if (v && _expController.text == '50' && _coinsController.text == '10') {
-                        _expController.text = '30';
-                        _coinsController.text = '15';
-                      }
-                    }),
-                    contentPadding: EdgeInsets.zero,
-                  ),
-                  SizedBox(height: 16.h),
-                  if (_isLearnTask) ...[
-                    Container(
-                      padding: EdgeInsets.symmetric(horizontal: 12.w, vertical: 8.h),
-                      decoration: BoxDecoration(
-                        color: UltramanTheme.blue.withValues(alpha: 0.08),
-                        borderRadius: BorderRadius.circular(8.r),
-                        border: Border.all(color: UltramanTheme.blue.withValues(alpha: 0.3)),
-                      ),
-                      child: Row(
-                        children: [
-                          Icon(Icons.record_voice_over, color: UltramanTheme.blue, size: 18.r),
-                          SizedBox(width: 8.w),
-                          Expanded(
-                            child: Text(
-                              '奖励类型：发放 ${_expController.text} 经验 + ${_coinsController.text} 能量币（可修改上方奖励值）',
-                              style: TextStyle(fontSize: 12.sp, color: Colors.grey.shade700),
-                            ),
-                          ),
-                        ],
-                      ),
-                    ),
-                    SizedBox(height: 16.h),
-                    Text('学习学科', style: TextStyle(fontSize: 14.sp, fontWeight: FontWeight.bold)),
-                    SizedBox(height: 8.h),
-                    Wrap(
-                      spacing: 8.w,
-                      runSpacing: 8.w,
-                      children: [
-                        ChoiceChip(
-                          label: const Text('学拼音'),
-                          selected: _learnSubject == LearnSubjects.pinyin,
-                          selectedColor: UltramanTheme.blue.withValues(alpha: 0.3),
-                          onSelected: (_) => _onLearnSubjectChanged(LearnSubjects.pinyin),
-                        ),
-                        ChoiceChip(
-                          label: const Text('识字'),
-                          selected: _learnSubject == LearnSubjects.hanzi,
-                          selectedColor: UltramanTheme.blue.withValues(alpha: 0.3),
-                          onSelected: (_) => _onLearnSubjectChanged(LearnSubjects.hanzi),
-                        ),
-                        ChoiceChip(
-                          label: const Text('学英语'),
-                          selected: _learnSubject == LearnSubjects.english,
-                          selectedColor: UltramanTheme.blue.withValues(alpha: 0.3),
-                          onSelected: (_) => _onLearnSubjectChanged(LearnSubjects.english),
-                        ),
-                      ],
-                    ),
-                    SizedBox(height: 16.h),
-                    Text('跟读顺序', style: TextStyle(fontSize: 14.sp, fontWeight: FontWeight.bold)),
-                    SizedBox(height: 8.h),
-                    Wrap(
-                      spacing: 8.w,
-                      runSpacing: 8.w,
-                      children: [
-                        ChoiceChip(
-                          label: const Text('按顺序读'),
-                          selected: _learnOrdered,
-                          selectedColor: UltramanTheme.blue.withValues(alpha: 0.3),
-                          onSelected: (_) => setState(() => _learnOrdered = true),
-                        ),
-                        ChoiceChip(
-                          label: const Text('随机读'),
-                          selected: !_learnOrdered,
-                          selectedColor: UltramanTheme.blue.withValues(alpha: 0.3),
-                          onSelected: (_) => setState(() => _learnOrdered = false),
-                        ),
-                      ],
-                    ),
-                    SizedBox(height: 4.h),
+                    SizedBox(height: 20.h),
+                    // 怪兽图标选择
                     Text(
-                      '拼音将按顺序读完所有拼音，或随机抽取跟读内容',
-                      style: TextStyle(fontSize: 11.sp, color: Colors.grey.shade600),
-                    ),
-                    SizedBox(height: 16.h),
-                    Text('每天跟读数量', style: TextStyle(fontSize: 14.sp, fontWeight: FontWeight.bold)),
-                    SizedBox(height: 8.h),
-                    Wrap(
-                      spacing: 8.w,
-                      runSpacing: 8.w,
-                      children: [
-                        for (final c in _presetLearnCounts)
-                          ChoiceChip(
-                            label: Text('$c 项'),
-                            selected: !_isCustomLearnCount && _learnCount == c,
-                            selectedColor: UltramanTheme.blue.withValues(alpha: 0.3),
-                            onSelected: (_) => setState(() {
-                              _isCustomLearnCount = false;
-                              _learnCount = c;
-                              _learnCountController.text = '$c';
-                            }),
-                          ),
-                        ChoiceChip(
-                          label: const Text('自定义'),
-                          selected: _isCustomLearnCount,
-                          selectedColor: UltramanTheme.blue.withValues(alpha: 0.3),
-                          onSelected: (_) => setState(() => _isCustomLearnCount = true),
-                        ),
-                      ],
-                    ),
-                    if (_isCustomLearnCount) ...[
-                      SizedBox(height: 8.h),
-                      TextField(
-                        controller: _learnCountController,
-                        keyboardType: TextInputType.number,
-                        decoration: InputDecoration(
-                          labelText: '自定义每天跟读数量',
-                          helperText: '大于 0 的整数',
-                          border: OutlineInputBorder(borderRadius: BorderRadius.circular(8.r)),
-                        ),
-                      ),
-                    ],
-                    SizedBox(height: 16.h),
-                    // 已移除语音判分：读完全部条目即发奖励，无需设置正确率阈值。
-                    Container(
-                      padding: EdgeInsets.symmetric(horizontal: 12.w, vertical: 8.h),
-                      decoration: BoxDecoration(
-                        color: UltramanTheme.blue.withValues(alpha: 0.08),
-                        borderRadius: BorderRadius.circular(8.r),
-                        border: Border.all(color: UltramanTheme.blue.withValues(alpha: 0.3)),
-                      ),
-                      child: Row(
-                        children: [
-                          Icon(Icons.emoji_events, color: UltramanTheme.blue, size: 18.r),
-                          SizedBox(width: 8.w),
-                          Expanded(
-                            child: Text(
-                              '跟读完成后（全部条目都读过）即发放奖励',
-                              style: TextStyle(fontSize: 12.sp, color: Colors.grey.shade700),
-                            ),
-                          ),
-                        ],
+                      '选择怪兽形象',
+                      style: TextStyle(
+                        fontSize: 14.sp,
+                        fontWeight: FontWeight.bold,
                       ),
                     ),
-                    SizedBox(height: 16.h),
-                  ],
-                  // 自定义日期选择
-                  if (_selectedType == 'custom_days') ...[
-                    Text('选择需要打卡的日期', style: TextStyle(fontSize: 14.sp, fontWeight: FontWeight.bold)),
                     SizedBox(height: 8.h),
-                    Wrap(
-                      spacing: 8.w,
-                      children: List.generate(7, (index) {
-                        final day = index + 1;
-                        final selected = _selectedDays.contains(day);
-                        return FilterChip(
-                          label: Text(_weekdays[index]),
-                          selected: selected,
-                          selectedColor: UltramanTheme.blue.withValues(alpha: 0.3),
-                          onSelected: (v) {
-                            setState(() {
-                              if (v) {
-                                _selectedDays.add(day);
-                              } else {
-                                _selectedDays.remove(day);
-                              }
-                            });
-                          },
-                        );
-                      }),
-                    ),
-                    SizedBox(height: 16.h),
-                  ],
-                  // 自定义打卡周期 (起止日期)
-                  if (_selectedType == 'custom_range') ...[
-                    Text('选择打卡周期 (起止日期)', style: TextStyle(fontSize: 14.sp, fontWeight: FontWeight.bold)),
-                    SizedBox(height: 4.h),
-                    Text(
-                      '从起始日期到结束日期，期间每天均可打卡',
-                      style: TextStyle(fontSize: 11.sp, color: Colors.grey.shade600),
-                    ),
-                    SizedBox(height: 8.h),
+                    _buildMonsterPicker(),
+                    SizedBox(height: 24.h),
                     Row(
                       children: [
                         Expanded(
-                          child: _dateField(
-                            label: '起始日期',
-                            date: _rangeStart,
-                            onTap: () => _pickRangeDate(isStart: true),
+                          child: TextFormField(
+                            controller: _expController,
+                            keyboardType: TextInputType.number,
+                            onChanged: (_) => setState(() {}),
+                            decoration: InputDecoration(
+                              labelText: '奖励经验值 (EXP)',
+                              border: OutlineInputBorder(
+                                borderRadius: BorderRadius.circular(8.r),
+                              ),
+                            ),
                           ),
                         ),
-                        Padding(
-                          padding: EdgeInsets.symmetric(horizontal: 8.w),
-                          child: Text('至', style: TextStyle(fontSize: 14.sp, color: Colors.grey.shade700)),
-                        ),
+                        SizedBox(width: 16.w),
                         Expanded(
-                          child: _dateField(
-                            label: '结束日期',
-                            date: _rangeEnd,
-                            onTap: () => _pickRangeDate(isStart: false),
+                          child: TextFormField(
+                            controller: _coinsController,
+                            keyboardType: TextInputType.number,
+                            onChanged: (_) => setState(() {}),
+                            decoration: InputDecoration(
+                              labelText: '奖励能量币 (Coins)',
+                              border: OutlineInputBorder(
+                                borderRadius: BorderRadius.circular(8.r),
+                              ),
+                            ),
                           ),
                         ),
                       ],
                     ),
-                    SizedBox(height: 16.h),
-                  ],
-                  SwitchListTile(
-                    title: Text('强制要求拍照凭证', style: TextStyle(fontSize: 16.sp)),
-                    subtitle: Text('需家长在控制台审核后才发放奖励', style: TextStyle(fontSize: 14.sp)),
-                    value: _requirePhoto,
-                    onChanged: (v) => setState(() => _requirePhoto = v),
-                    contentPadding: EdgeInsets.zero,
-                  ),
-                  SizedBox(height: 40.h),
-                  ElevatedButton(
-                    onPressed: _saveTask,
-                    style: ElevatedButton.styleFrom(
-                      backgroundColor: Colors.blueAccent,
-                      padding: EdgeInsets.symmetric(vertical: 16.h),
-                      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8.r)),
+                    SizedBox(height: 24.h),
+                    DropdownButtonFormField<String>(
+                      value: _selectedType,
+                      isExpanded: true,
+                      icon: const Icon(
+                        Icons.arrow_drop_down_circle,
+                        color: Color(0xFF00A0E9),
+                        size: 22,
+                      ),
+                      dropdownColor: Colors.white,
+                      borderRadius: BorderRadius.circular(12.r),
+                      menuMaxHeight: 420.h,
+                      style: TextStyle(
+                        fontSize: 15.sp,
+                        color: Colors.grey.shade900,
+                        fontWeight: FontWeight.w500,
+                      ),
+                      decoration: InputDecoration(
+                        labelText: '任务周期',
+                        labelStyle: TextStyle(
+                          fontSize: 14.sp,
+                          color: Colors.grey.shade600,
+                        ),
+                        filled: true,
+                        fillColor: const Color(0xFFF5F8FC),
+                        contentPadding: EdgeInsets.symmetric(
+                          horizontal: 16.w,
+                          vertical: 12.h,
+                        ),
+                        prefixIcon: const Icon(
+                          Icons.event_repeat,
+                          color: Color(0xFF00A0E9),
+                          size: 22,
+                        ),
+                        enabledBorder: OutlineInputBorder(
+                          borderRadius: BorderRadius.circular(12.r),
+                          borderSide: BorderSide(
+                            color: const Color(
+                              0xFF00A0E9,
+                            ).withValues(alpha: 0.4),
+                            width: 1.2,
+                          ),
+                        ),
+                        focusedBorder: OutlineInputBorder(
+                          borderRadius: BorderRadius.circular(12.r),
+                          borderSide: const BorderSide(
+                            color: Color(0xFF00A0E9),
+                            width: 1.8,
+                          ),
+                        ),
+                      ),
+                      items: _cycleItems(),
+                      selectedItemBuilder: (context) => _cycleItems(
+                        selected: true,
+                      ).map((e) => e.child!).toList(),
+                      onChanged: (v) => setState(() => _selectedType = v!),
                     ),
-                    child: Text('保存任务', style: TextStyle(fontSize: 18.sp, color: Colors.white)),
-                  ),
-                ],
+                    SizedBox(height: 16.h),
+                    // 每日数学题学习任务 (独立入口，与周期类型区分)
+                    SwitchListTile(
+                      title: Text(
+                        '每日数学题 (学习闯关)',
+                        style: TextStyle(
+                          fontSize: 16.sp,
+                          fontWeight: FontWeight.bold,
+                        ),
+                      ),
+                      subtitle: Text(
+                        '每天做数学题，儿童作答后获得奖励',
+                        style: TextStyle(fontSize: 13.sp),
+                      ),
+                      value: _isMathTask,
+                      activeColor: UltramanTheme.blue,
+                      onChanged: (v) => setState(() {
+                        _isMathTask = v;
+                        // 与学习跟读互斥：打开数学题时关闭学习跟读
+                        if (v) _isLearnTask = false;
+                        // 打开数学题开关时，若奖励仍为默认值，则填入推荐预设
+                        if (v &&
+                            _expController.text == '50' &&
+                            _coinsController.text == '10') {
+                          _expController.text = '30';
+                          _coinsController.text = '15';
+                        }
+                      }),
+                      contentPadding: EdgeInsets.zero,
+                    ),
+                    SizedBox(height: 16.h),
+                    // 数学题任务配置
+                    if (_isMathTask) ...[
+                      // 奖励说明 (发放币 + 经验，可修改)
+                      Container(
+                        padding: EdgeInsets.symmetric(
+                          horizontal: 12.w,
+                          vertical: 8.h,
+                        ),
+                        decoration: BoxDecoration(
+                          color: UltramanTheme.blue.withValues(alpha: 0.08),
+                          borderRadius: BorderRadius.circular(8.r),
+                          border: Border.all(
+                            color: UltramanTheme.blue.withValues(alpha: 0.3),
+                          ),
+                        ),
+                        child: Row(
+                          children: [
+                            Icon(
+                              Icons.card_giftcard,
+                              color: UltramanTheme.blue,
+                              size: 18.r,
+                            ),
+                            SizedBox(width: 8.w),
+                            Expanded(
+                              child: Text(
+                                '奖励类型：发放 ${_expController.text} 经验 + ${_coinsController.text} 能量币（可修改上方奖励值）',
+                                style: TextStyle(
+                                  fontSize: 12.sp,
+                                  color: Colors.grey.shade700,
+                                ),
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                      SizedBox(height: 16.h),
+                      Text(
+                        '题目难度 (数值范围)',
+                        style: TextStyle(
+                          fontSize: 14.sp,
+                          fontWeight: FontWeight.bold,
+                        ),
+                      ),
+                      SizedBox(height: 8.h),
+                      // 预设范围 + 自定义
+                      Wrap(
+                        spacing: 8.w,
+                        runSpacing: 8.w,
+                        children: [
+                          for (final r in _presetRanges)
+                            ChoiceChip(
+                              label: Text('$r 以内'),
+                              selected: !_isCustomRange && _mathRange == r,
+                              selectedColor: UltramanTheme.blue.withValues(
+                                alpha: 0.3,
+                              ),
+                              onSelected: (_) => setState(() {
+                                _isCustomRange = false;
+                                _mathRange = r;
+                              }),
+                            ),
+                          ChoiceChip(
+                            label: const Text('自定义'),
+                            selected: _isCustomRange,
+                            selectedColor: UltramanTheme.blue.withValues(
+                              alpha: 0.3,
+                            ),
+                            onSelected: (_) =>
+                                setState(() => _isCustomRange = true),
+                          ),
+                        ],
+                      ),
+                      // 自定义范围输入框
+                      if (_isCustomRange) ...[
+                        SizedBox(height: 8.h),
+                        TextField(
+                          controller: _customRangeController,
+                          keyboardType: TextInputType.number,
+                          decoration: InputDecoration(
+                            labelText: '自定义数值上限 (如 15、30、100)',
+                            helperText: '结果与操作数均不超过该数值',
+                            border: OutlineInputBorder(
+                              borderRadius: BorderRadius.circular(8.r),
+                            ),
+                          ),
+                        ),
+                      ],
+                      SizedBox(height: 8.h),
+                      Text(
+                        '运算类型',
+                        style: TextStyle(
+                          fontSize: 14.sp,
+                          fontWeight: FontWeight.bold,
+                        ),
+                      ),
+                      SizedBox(height: 8.h),
+                      Wrap(
+                        spacing: 8.w,
+                        children: [
+                          ChoiceChip(
+                            label: const Text('加法'),
+                            selected: _mathOp == 'add',
+                            selectedColor: UltramanTheme.blue.withValues(
+                              alpha: 0.3,
+                            ),
+                            onSelected: (_) => setState(() => _mathOp = 'add'),
+                          ),
+                          ChoiceChip(
+                            label: const Text('减法'),
+                            selected: _mathOp == 'sub',
+                            selectedColor: UltramanTheme.blue.withValues(
+                              alpha: 0.3,
+                            ),
+                            onSelected: (_) => setState(() => _mathOp = 'sub'),
+                          ),
+                          ChoiceChip(
+                            label: const Text('加减混合'),
+                            selected: _mathOp == 'mix',
+                            selectedColor: UltramanTheme.blue.withValues(
+                              alpha: 0.3,
+                            ),
+                            onSelected: (_) => setState(() => _mathOp = 'mix'),
+                          ),
+                        ],
+                      ),
+                      SizedBox(height: 16.h),
+                      Text(
+                        '每天题目数量',
+                        style: TextStyle(
+                          fontSize: 14.sp,
+                          fontWeight: FontWeight.bold,
+                        ),
+                      ),
+                      SizedBox(height: 8.h),
+                      // 预设数量 + 自定义
+                      Wrap(
+                        spacing: 8.w,
+                        runSpacing: 8.w,
+                        children: [
+                          for (final c in _presetCounts)
+                            ChoiceChip(
+                              label: Text('$c 题'),
+                              selected: !_isCustomCount && _mathCount == c,
+                              selectedColor: UltramanTheme.blue.withValues(
+                                alpha: 0.3,
+                              ),
+                              onSelected: (_) => setState(() {
+                                _isCustomCount = false;
+                                _mathCount = c;
+                                _mathCountController.text = '$c';
+                              }),
+                            ),
+                          ChoiceChip(
+                            label: const Text('自定义'),
+                            selected: _isCustomCount,
+                            selectedColor: UltramanTheme.blue.withValues(
+                              alpha: 0.3,
+                            ),
+                            onSelected: (_) =>
+                                setState(() => _isCustomCount = true),
+                          ),
+                        ],
+                      ),
+                      // 自定义题目数量输入框
+                      if (_isCustomCount) ...[
+                        SizedBox(height: 8.h),
+                        TextField(
+                          controller: _mathCountController,
+                          keyboardType: TextInputType.number,
+                          decoration: InputDecoration(
+                            labelText: '自定义每天题目数量',
+                            helperText: '大于 0 的整数',
+                            border: OutlineInputBorder(
+                              borderRadius: BorderRadius.circular(8.r),
+                            ),
+                          ),
+                        ),
+                      ],
+                      SizedBox(height: 16.h),
+                      Text(
+                        '答对多少题获得奖励',
+                        style: TextStyle(
+                          fontSize: 14.sp,
+                          fontWeight: FontWeight.bold,
+                        ),
+                      ),
+                      SizedBox(height: 8.h),
+                      // 预设阈值 + 自定义
+                      Wrap(
+                        spacing: 8.w,
+                        runSpacing: 8.w,
+                        children: [
+                          for (final p in _presetPassPercents)
+                            ChoiceChip(
+                              label: Text('$p%'),
+                              selected: !_isCustomPass && _mathPassPercent == p,
+                              selectedColor: UltramanTheme.blue.withValues(
+                                alpha: 0.3,
+                              ),
+                              onSelected: (_) => setState(() {
+                                _isCustomPass = false;
+                                _mathPassPercent = p;
+                                _passPercentController.text = '$p';
+                              }),
+                            ),
+                          ChoiceChip(
+                            label: const Text('自定义'),
+                            selected: _isCustomPass,
+                            selectedColor: UltramanTheme.blue.withValues(
+                              alpha: 0.3,
+                            ),
+                            onSelected: (_) =>
+                                setState(() => _isCustomPass = true),
+                          ),
+                        ],
+                      ),
+                      // 自定义阈值输入框
+                      if (_isCustomPass) ...[
+                        SizedBox(height: 8.h),
+                        TextField(
+                          controller: _passPercentController,
+                          keyboardType: TextInputType.number,
+                          decoration: InputDecoration(
+                            labelText: '自定义答对百分比',
+                            helperText: '1~100 的整数，如 75 表示答对 75% 即发奖励',
+                            border: OutlineInputBorder(
+                              borderRadius: BorderRadius.circular(8.r),
+                            ),
+                          ),
+                        ),
+                      ],
+                      SizedBox(height: 16.h),
+                    ],
+                    // 每日学习跟读任务 (拼音/识字/英语，与数学题互斥)
+                    SwitchListTile(
+                      title: Text(
+                        '每日学习跟读 (拼音/识字/英语)',
+                        style: TextStyle(
+                          fontSize: 16.sp,
+                          fontWeight: FontWeight.bold,
+                        ),
+                      ),
+                      subtitle: Text(
+                        '软件读一遍，孩子跟读一遍，语音判分后获得奖励',
+                        style: TextStyle(fontSize: 13.sp),
+                      ),
+                      value: _isLearnTask,
+                      activeColor: UltramanTheme.blue,
+                      onChanged: (v) => setState(() {
+                        _isLearnTask = v;
+                        // 与数学题互斥：打开学习跟读时关闭数学题
+                        if (v) _isMathTask = false;
+                        if (v &&
+                            _expController.text == '50' &&
+                            _coinsController.text == '10') {
+                          _expController.text = '30';
+                          _coinsController.text = '15';
+                        }
+                      }),
+                      contentPadding: EdgeInsets.zero,
+                    ),
+                    SizedBox(height: 16.h),
+                    if (_isLearnTask) ...[
+                      Container(
+                        padding: EdgeInsets.symmetric(
+                          horizontal: 12.w,
+                          vertical: 8.h,
+                        ),
+                        decoration: BoxDecoration(
+                          color: UltramanTheme.blue.withValues(alpha: 0.08),
+                          borderRadius: BorderRadius.circular(8.r),
+                          border: Border.all(
+                            color: UltramanTheme.blue.withValues(alpha: 0.3),
+                          ),
+                        ),
+                        child: Row(
+                          children: [
+                            Icon(
+                              Icons.record_voice_over,
+                              color: UltramanTheme.blue,
+                              size: 18.r,
+                            ),
+                            SizedBox(width: 8.w),
+                            Expanded(
+                              child: Text(
+                                '奖励类型：发放 ${_expController.text} 经验 + ${_coinsController.text} 能量币（可修改上方奖励值）',
+                                style: TextStyle(
+                                  fontSize: 12.sp,
+                                  color: Colors.grey.shade700,
+                                ),
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                      SizedBox(height: 16.h),
+                      Text(
+                        '学习学科',
+                        style: TextStyle(
+                          fontSize: 14.sp,
+                          fontWeight: FontWeight.bold,
+                        ),
+                      ),
+                      SizedBox(height: 8.h),
+                      Wrap(
+                        spacing: 8.w,
+                        runSpacing: 8.w,
+                        children: [
+                          ChoiceChip(
+                            label: const Text('学拼音'),
+                            selected: _learnSubject == LearnSubjects.pinyin,
+                            selectedColor: UltramanTheme.blue.withValues(
+                              alpha: 0.3,
+                            ),
+                            onSelected: (_) =>
+                                _onLearnSubjectChanged(LearnSubjects.pinyin),
+                          ),
+                          ChoiceChip(
+                            label: const Text('识字'),
+                            selected: _learnSubject == LearnSubjects.hanzi,
+                            selectedColor: UltramanTheme.blue.withValues(
+                              alpha: 0.3,
+                            ),
+                            onSelected: (_) =>
+                                _onLearnSubjectChanged(LearnSubjects.hanzi),
+                          ),
+                          ChoiceChip(
+                            label: const Text('学英语'),
+                            selected: _learnSubject == LearnSubjects.english,
+                            selectedColor: UltramanTheme.blue.withValues(
+                              alpha: 0.3,
+                            ),
+                            onSelected: (_) =>
+                                _onLearnSubjectChanged(LearnSubjects.english),
+                          ),
+                        ],
+                      ),
+                      SizedBox(height: 16.h),
+                      // 识字/英语可配置「跟读顺序」和「每天跟读数量」；
+                      // 拼音固定按顺序读完全部，不显示这两个配置。
+                      if (_learnSubject != LearnSubjects.pinyin) ...[
+                        Text(
+                          '跟读顺序',
+                          style: TextStyle(
+                            fontSize: 14.sp,
+                            fontWeight: FontWeight.bold,
+                          ),
+                        ),
+                        SizedBox(height: 8.h),
+                        Wrap(
+                          spacing: 8.w,
+                          runSpacing: 8.w,
+                          children: [
+                            ChoiceChip(
+                              label: const Text('按顺序读'),
+                              selected: _learnOrdered,
+                              selectedColor: UltramanTheme.blue.withValues(
+                                alpha: 0.3,
+                              ),
+                              onSelected: (_) =>
+                                  setState(() => _learnOrdered = true),
+                            ),
+                            ChoiceChip(
+                              label: const Text('随机读'),
+                              selected: !_learnOrdered,
+                              selectedColor: UltramanTheme.blue.withValues(
+                                alpha: 0.3,
+                              ),
+                              onSelected: (_) =>
+                                  setState(() => _learnOrdered = false),
+                            ),
+                          ],
+                        ),
+                        SizedBox(height: 16.h),
+                        Text(
+                          '每天跟读数量',
+                          style: TextStyle(
+                            fontSize: 14.sp,
+                            fontWeight: FontWeight.bold,
+                          ),
+                        ),
+                        SizedBox(height: 8.h),
+                        Wrap(
+                          spacing: 8.w,
+                          runSpacing: 8.w,
+                          children: [
+                            for (final c in _presetLearnCounts)
+                              ChoiceChip(
+                                label: Text('$c 项'),
+                                selected:
+                                    !_isCustomLearnCount && _learnCount == c,
+                                selectedColor: UltramanTheme.blue.withValues(
+                                  alpha: 0.3,
+                                ),
+                                onSelected: (_) => setState(() {
+                                  _isCustomLearnCount = false;
+                                  _learnCount = c;
+                                  _learnCountController.text = '$c';
+                                }),
+                              ),
+                            ChoiceChip(
+                              label: const Text('自定义'),
+                              selected: _isCustomLearnCount,
+                              selectedColor: UltramanTheme.blue.withValues(
+                                alpha: 0.3,
+                              ),
+                              onSelected: (_) =>
+                                  setState(() => _isCustomLearnCount = true),
+                            ),
+                          ],
+                        ),
+                        if (_isCustomLearnCount) ...[
+                          SizedBox(height: 8.h),
+                          TextField(
+                            controller: _learnCountController,
+                            keyboardType: TextInputType.number,
+                            decoration: InputDecoration(
+                              labelText: '自定义每天跟读数量',
+                              helperText: '大于 0 的整数',
+                              border: OutlineInputBorder(
+                                borderRadius: BorderRadius.circular(8.r),
+                              ),
+                            ),
+                          ),
+                        ],
+                        SizedBox(height: 16.h),
+                      ],
+                      // 已移除语音判分：读完全部条目即发奖励，无需设置正确率阈值。
+                      Container(
+                        padding: EdgeInsets.symmetric(
+                          horizontal: 12.w,
+                          vertical: 8.h,
+                        ),
+                        decoration: BoxDecoration(
+                          color: UltramanTheme.blue.withValues(alpha: 0.08),
+                          borderRadius: BorderRadius.circular(8.r),
+                          border: Border.all(
+                            color: UltramanTheme.blue.withValues(alpha: 0.3),
+                          ),
+                        ),
+                        child: Row(
+                          children: [
+                            Icon(
+                              Icons.emoji_events,
+                              color: UltramanTheme.blue,
+                              size: 18.r,
+                            ),
+                            SizedBox(width: 8.w),
+                            Expanded(
+                              child: Text(
+                                '跟读完成后（全部条目都读过）即发放奖励',
+                                style: TextStyle(
+                                  fontSize: 12.sp,
+                                  color: Colors.grey.shade700,
+                                ),
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                      SizedBox(height: 16.h),
+                    ],
+                    // 自定义日期选择
+                    if (_selectedType == 'custom_days') ...[
+                      Text(
+                        '选择需要打卡的日期',
+                        style: TextStyle(
+                          fontSize: 14.sp,
+                          fontWeight: FontWeight.bold,
+                        ),
+                      ),
+                      SizedBox(height: 8.h),
+                      Wrap(
+                        spacing: 8.w,
+                        children: List.generate(7, (index) {
+                          final day = index + 1;
+                          final selected = _selectedDays.contains(day);
+                          return FilterChip(
+                            label: Text(_weekdays[index]),
+                            selected: selected,
+                            selectedColor: UltramanTheme.blue.withValues(
+                              alpha: 0.3,
+                            ),
+                            onSelected: (v) {
+                              setState(() {
+                                if (v) {
+                                  _selectedDays.add(day);
+                                } else {
+                                  _selectedDays.remove(day);
+                                }
+                              });
+                            },
+                          );
+                        }),
+                      ),
+                      SizedBox(height: 16.h),
+                    ],
+                    // 自定义打卡周期 (起止日期)
+                    if (_selectedType == 'custom_range') ...[
+                      Text(
+                        '选择打卡周期 (起止日期)',
+                        style: TextStyle(
+                          fontSize: 14.sp,
+                          fontWeight: FontWeight.bold,
+                        ),
+                      ),
+                      SizedBox(height: 4.h),
+                      Text(
+                        '从起始日期到结束日期，期间每天均可打卡',
+                        style: TextStyle(
+                          fontSize: 11.sp,
+                          color: Colors.grey.shade600,
+                        ),
+                      ),
+                      SizedBox(height: 8.h),
+                      Row(
+                        children: [
+                          Expanded(
+                            child: _dateField(
+                              label: '起始日期',
+                              date: _rangeStart,
+                              onTap: () => _pickRangeDate(isStart: true),
+                            ),
+                          ),
+                          Padding(
+                            padding: EdgeInsets.symmetric(horizontal: 8.w),
+                            child: Text(
+                              '至',
+                              style: TextStyle(
+                                fontSize: 14.sp,
+                                color: Colors.grey.shade700,
+                              ),
+                            ),
+                          ),
+                          Expanded(
+                            child: _dateField(
+                              label: '结束日期',
+                              date: _rangeEnd,
+                              onTap: () => _pickRangeDate(isStart: false),
+                            ),
+                          ),
+                        ],
+                      ),
+                      SizedBox(height: 16.h),
+                    ],
+                    // 学习跟读任务不显示「强制拍照凭证」：跟读是语音交互，无需拍照。
+                    if (!_isLearnTask)
+                      SwitchListTile(
+                        title: Text(
+                          '强制要求拍照凭证',
+                          style: TextStyle(fontSize: 16.sp),
+                        ),
+                        subtitle: Text(
+                          '需家长在控制台审核后才发放奖励',
+                          style: TextStyle(fontSize: 14.sp),
+                        ),
+                        value: _requirePhoto,
+                        onChanged: (v) => setState(() => _requirePhoto = v),
+                        contentPadding: EdgeInsets.zero,
+                      ),
+                    SizedBox(height: 40.h),
+                    ElevatedButton(
+                      onPressed: _saveTask,
+                      style: ElevatedButton.styleFrom(
+                        backgroundColor: Colors.blueAccent,
+                        padding: EdgeInsets.symmetric(vertical: 16.h),
+                        shape: RoundedRectangleBorder(
+                          borderRadius: BorderRadius.circular(8.r),
+                        ),
+                      ),
+                      child: Text(
+                        '保存任务',
+                        style: TextStyle(fontSize: 18.sp, color: Colors.white),
+                      ),
+                    ),
+                  ],
+                ),
               ),
             ),
           ),
         ),
-      ),
       ),
     );
   }

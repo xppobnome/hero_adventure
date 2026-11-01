@@ -24,7 +24,26 @@ class UltramanStarfield extends StatelessWidget {
 }
 
 class _StarfieldPainter extends CustomPainter {
-  final math.Random _rng = math.Random(42); // 固定种子保证稳定
+  _StarfieldPainter() {
+    // 用固定种子一次性生成全部星点/星云坐标并缓存，确保无论重绘多少次，
+    // 星空都保持恒定、不会因随机序列前移而「抖动」。
+    final rng = math.Random(42);
+    for (int i = 0; i < 120; i++) {
+      _stars.add(_Star(
+        x: rng.nextDouble(),
+        y: rng.nextDouble(),
+        r: rng.nextDouble() * 1.8 + 0.4,
+        opacity: rng.nextDouble() * 0.7 + 0.3,
+      ));
+    }
+    for (int i = 0; i < 5; i++) {
+      _nebulas.add(Offset(rng.nextDouble(), rng.nextDouble()));
+    }
+  }
+
+  // 归一化坐标 (0..1)，绘制时再乘实际尺寸，保证横竖屏/尺寸变化时比例稳定。
+  final List<_Star> _stars = <_Star>[];
+  final List<Offset> _nebulas = <Offset>[];
 
   @override
   void paint(Canvas canvas, Size size) {
@@ -38,19 +57,13 @@ class _StarfieldPainter extends CustomPainter {
     canvas.drawRect(Offset.zero & size, bg);
 
     // 星点
-    for (int i = 0; i < 120; i++) {
-      final x = _rng.nextDouble() * size.width;
-      final y = _rng.nextDouble() * size.height;
-      final r = _rng.nextDouble() * 1.8 + 0.4;
-      final opacity = _rng.nextDouble() * 0.7 + 0.3;
-      final star = Paint()..color = Colors.white.withValues(alpha: opacity);
-      canvas.drawCircle(Offset(x, y), r, star);
+    for (final s in _stars) {
+      final star = Paint()..color = Colors.white.withValues(alpha: s.opacity);
+      canvas.drawCircle(Offset(s.x * size.width, s.y * size.height), s.r, star);
     }
 
     // 星云光斑
-    for (int i = 0; i < 5; i++) {
-      final cx = _rng.nextDouble() * size.width;
-      final cy = _rng.nextDouble() * size.height;
+    for (final n in _nebulas) {
       final nebula = Paint()
         ..shader = RadialGradient(
           colors: [
@@ -58,14 +71,35 @@ class _StarfieldPainter extends CustomPainter {
             const Color(0xFF00A0E9).withValues(alpha: 0.0),
           ],
         ).createShader(
-          Rect.fromCircle(center: Offset(cx, cy), radius: 120),
+          Rect.fromCircle(
+            center: Offset(n.dx * size.width, n.dy * size.height),
+            radius: 120,
+          ),
         );
-      canvas.drawCircle(Offset(cx, cy), 120, nebula);
+      canvas.drawCircle(
+        Offset(n.dx * size.width, n.dy * size.height),
+        120,
+        nebula,
+      );
     }
   }
 
   @override
   bool shouldRepaint(covariant CustomPainter oldDelegate) => false;
+}
+
+/// 星空单颗星点的静态数据 (归一化坐标 + 半径 + 透明度)。
+class _Star {
+  final double x;
+  final double y;
+  final double r;
+  final double opacity;
+  const _Star({
+    required this.x,
+    required this.y,
+    required this.r,
+    required this.opacity,
+  });
 }
 
 /// 怪兽占位图形 (基于 iconName 变化配色与形状，模拟不同怪兽)。

@@ -70,3 +70,8 @@ assets/tts_model/**/*.onnx
 
 # 拼音跟读教学视频（体积较大，不纳入 git；保留本地用于编译，克隆后需自行放置）。
 assets/video/*.mp4
+
+# TTS 模型量化实验临时产物（quantize_dynamic / QDQ 方案已放弃，勿入库）
+.venv_q/
+quantize_tts.py
+quantize_qdq.py

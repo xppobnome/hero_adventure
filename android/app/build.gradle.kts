@@ -39,8 +39,8 @@ android {
         // You can force using the value of versionCode by specifying the `-P force-version-code-ignoring-abi=true`
         // flag during build.
         versionCode = flutter.versionCode
-        // 显示版本号：1.0.0 Beta（Android versionName 支持任意字符串）
-        versionName = "1.0.0 Beta"
+        // 显示版本号：跟随 pubspec.yaml 的 version（当前 1.0.1）
+        versionName = flutter.versionName
     }
 
     signingConfigs {
@@ -57,9 +57,18 @@ android {
     }
 
     buildTypes {
+        // 统一签名：debug 与 release 均使用正式签名（若已配置 key.properties），
+        // 使 `flutter run` 调试运行与正式打包行为一致（签名、公共目录访问权限等）。
+        // 若未配置 key.properties（CI / 他人 clone），debug/release 都退回默认 debug 签名。
+        val useReleaseSigning = keystorePropertiesFile.exists()
+        if (useReleaseSigning) {
+            debug {
+                signingConfig = signingConfigs.getByName("release")
+            }
+        }
         release {
             // 优先使用正式签名；若未配置 key.properties 则退回 debug 签名。
-            signingConfig = if (keystorePropertiesFile.exists()) {
+            signingConfig = if (useReleaseSigning) {
                 signingConfigs.getByName("release")
             } else {
                 signingConfigs.getByName("debug")

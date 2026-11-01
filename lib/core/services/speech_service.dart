@@ -74,11 +74,18 @@ class SpeechService {
 
     // 降级系统 flutter_tts。
     debugPrint('[SpeechService] Sherpa 失败，降级系统 TTS');
-    await _speakWithSystemTts(text, subject: subject, appendChinese: appendChinese);
+    await _speakWithSystemTts(
+      text,
+      subject: subject,
+      appendChinese: appendChinese,
+    );
   }
 
   /// 预热离线 TTS 模型 (加载中英双模型)；进页面时调用以削峰首点击延迟。
   Future<bool> warmUp() => SherpaTtsService.instance.ensureReady();
+
+  /// 检测本地 TTS 模型是否已就位 (不触发下载)。
+  Future<bool> isModelReady() => SherpaTtsService.instance.isModelReady();
 
   /// 预合成指定文本并缓存 (不播放)；进页面/切题时预热当前条目。
   Future<void> prefetch(String text, {required String subject}) =>

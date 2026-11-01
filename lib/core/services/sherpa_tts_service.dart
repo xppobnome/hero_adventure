@@ -5,6 +5,7 @@ import 'dart:typed_data';
 
 import 'package:flutter/foundation.dart';
 import 'package:flutter/services.dart';
+import 'package:http/http.dart' as http;
 import 'package:just_audio/just_audio.dart';
 import 'package:path/path.dart' as p;
 import 'package:path_provider/path_provider.dart';
@@ -12,6 +13,65 @@ import 'package:piper_phonemize/piper_phonemize.dart' as piper;
 import 'package:sherpa_onnx/sherpa_onnx.dart' as sherpa_onnx;
 
 import '../../data/learn_content/learn_item.dart';
+import '../utils/app_logger.dart';
+
+/// 模型按需下载配置。
+///
+/// 模型文件 (中文 116MB / 英文 75MB) 已从 APK 中移除，改为首次使用时
+/// 从远程按需下载。下载顺序：本地缓存 → 远程直链 → 回退 assets 打包文件。
+///
+/// 远程直链走 Cloudflare R2 (免费 10GB 存储 + 无单文件 50M 限制)，
+/// 直链格式：`https://<账户ID>.r2.dev/tts_model/zh/vits-zh-hf-fanchen-C.onnx`。
+///
+/// TODO(xppobnome): 替换为真实 R2 公共域名后，删掉这段 TODO。
+class TtsModelStore {
+  TtsModelStore._();
+
+  /// R2 直链根地址 (末尾不含斜杠)。
+  ///
+  /// 桶 `hero-adventure` 已绑定自定义域名 `tts.cloudvl.de5.net` (走 Cloudflare
+  /// CDN 边缘缓存，国内访问比裸 r2.dev 更快)。桶根目录下直接是 `tts_model/`
+  /// 目录，故此处只填域名本身，不含桶名。
+  /// 最终下载地址形如：
+  ///   `https://tts.cloudvl.de5.net/tts_model/zh/vits-zh-hf-fanchen-C.onnx`
+  ///
+  /// 备用直链 (r2.dev 公共域名，国内较慢)：
+  ///   `https://pub-20b1ee8e3ad1449b8c69f85aa093e36f.r2.dev`
+  static const String _remoteBase = 'https://tts.cloudvl.de5.net';
+
+  /// 相对路径 → (远程相对路径, 本地 assets 路径)。
+  ///
+  /// 远程路径与 assets 路径保持同一相对结构，便于统一处理。
+  static const Map<String, String> _remoteByRel = <String, String>{
+    // 中文模型
+    'zh/vits-zh-hf-fanchen-C.onnx': 'zh/vits-zh-hf-fanchen-C.onnx',
+    'zh/tokens.txt': 'zh/tokens.txt',
+    'zh/lexicon.txt': 'zh/lexicon.txt',
+    'zh/date.fst': 'zh/date.fst',
+    'zh/number.fst': 'zh/number.fst',
+    'zh/phone.fst': 'zh/phone.fst',
+    'zh/new_heteronym.fst': 'zh/new_heteronym.fst',
+    // 英文模型
+    'en/en_US-libritts_r-medium.onnx': 'en/en_US-libritts_r-medium.onnx',
+    'en/tokens.txt': 'en/tokens.txt',
+  };
+
+  /// 模型相对路径列表 (assets 路径去掉 `assets/tts_model/` 前缀)。
+  static const List<String> rels = <String>[
+    'zh/vits-zh-hf-fanchen-C.onnx',
+    'zh/tokens.txt',
+    'zh/lexicon.txt',
+    'zh/date.fst',
+    'zh/number.fst',
+    'zh/phone.fst',
+    'zh/new_heteronym.fst',
+    'en/en_US-libritts_r-medium.onnx',
+    'en/tokens.txt',
+  ];
+
+  /// 计算远程直链地址。
+  static String remoteUrl(String rel) => '$_remoteBase/tts_model/$rel';
+}
 
 /// 离线神经网络 TTS 服务 (Sherpa-ONNX 中文 VITS + 英文 Piper 双模型)。
 ///
@@ -42,6 +102,14 @@ class SherpaTtsService {
   bool _initializing = false;
   bool _ready = false;
 
+  /// 模型下载进度回调 (供界面显示「正在下载语音模型…」)。
+  /// 参数：已完成字节数 / 总字节数 (总字节数可能为 0 表示未知)。
+  void Function(int received, int total)? onModelDownloadProgress;
+
+  /// 是否正在下载模型 (首次使用时，界面可据此提示用户等待)。
+  bool _downloading = false;
+  bool get isDownloading => _downloading;
+
   // ---- 请求序号 → 完成回调 ----
   int _seq = 0;
   final Map<int, Completer<String?>> _pending = <int, Completer<String?>>{};
@@ -53,9 +121,21 @@ class SherpaTtsService {
   // ---- 在途合成去重：同一 key 正在合成时，复用其 future ----
   // 解决「预热未完成时点击」或「预热与点击并发」导致的重复合成与延迟：
   // 点击读一遍时若同文本正在后台预合成，直接 await 同一个结果，而非新发一条请求。
-  final Map<String, Completer<String?>> _inflight = <String, Completer<String?>>{};
+  final Map<String, Completer<String?>> _inflight =
+      <String, Completer<String?>>{};
 
   final Map<int, String> _pendingKey = <int, String>{};
+
+  // ---- 后台预合成串行队列 ----
+  // 关键：isolate 是单线程串行处理合成请求 (每个是同步阻塞 FFI)。
+  // 若「预载全部条目」瞬间派发几十上百个请求，isolate 逐个合成、
+  // 每个请求 15s 超时 → 队尾大面积超时。因此后台预合成改为 FIFO 串行：
+  // 一次只派发一个请求，await 完成后再发下一个，保证 isolate 不积压。
+  final List<_PrefetchTask> _prefetchQueue = <_PrefetchTask>[];
+  bool _prefetchDraining = false;
+
+  /// 已请求过预合成的 key 集合 (避免队列里重复堆积同一条目)。
+  final Set<String> _prefetchQueued = <String>{};
 
   // ---- 播放器 (主 isolate) ----
   final AudioPlayer _player = AudioPlayer();
@@ -63,24 +143,56 @@ class SherpaTtsService {
   /// 是否已就绪 (模型加载完成)。
   bool get isReady => _ready;
 
+  /// 检测本地模型文件是否已就位 (只查磁盘，不触发下载)。
+  ///
+  /// 用于首次进入时判断「是否需要下载资源」：识字/英语跟读依赖离线 TTS
+  /// 模型，模型未就位时应提示用户下载，而不是让用户进入后听不到声音。
+  Future<bool> isModelReady() async {
+    try {
+      final base = await getApplicationSupportDirectory();
+      final root = p.join(base.path, 'tts_model');
+      // 关键模型文件 (中文 + 英文 onnx) 存在且非空即视为就绪。
+      const critical = <String>[
+        'zh/vits-zh-hf-fanchen-C.onnx',
+        'en/en_US-libritts_r-medium.onnx',
+      ];
+      for (final rel in critical) {
+        final f = File(p.join(root, rel));
+        if (!await f.exists() || await f.length() <= 0) {
+          return false;
+        }
+      }
+      return true;
+    } catch (e) {
+      debugPrint('[SherpaTts] 模型就绪检测失败: $e');
+      return false;
+    }
+  }
+
   /// 惰性启动 isolate 并加载中英两个模型。
   ///
   /// 幂等：重复调用若已就绪立即返回；若正在初始化则等待其完成。
+  ///
+  /// 注意：首次初始化可能包含模型下载 (191MB)，耗时可达数分钟，
+  /// 因此「等待初始化」不设硬超时，会一直等到就绪或明确失败。
   Future<bool> ensureReady() async {
     if (_ready) return true;
     if (_initializing) {
-      // 等待初始化完成 (最多 15 秒，模型加载较慢)。
-      for (int i = 0; i < 150 && !_ready; i++) {
-        await Future.delayed(const Duration(milliseconds: 100));
+      // 等待初始化完成 (不设硬超时，覆盖首次模型下载的耗时)。
+      while (!_ready && _initializing) {
+        await Future.delayed(const Duration(milliseconds: 200));
       }
       return _ready;
     }
     _initializing = true;
     try {
-      // 先把模型文件从 assets 复制到应用支持目录 (isolate 内无法直接访问 rootBundle)。
-      final dir = await _copyModelsToDisk();
+      // 先把模型文件就位到应用支持目录 (本地缓存 → 远程下载 → assets 回退)，
+      // isolate 内无法直接访问 rootBundle，必须先把模型落盘。
+      _downloading = true;
+      final dir = await _ensureModelsOnDisk();
+      _downloading = false;
       if (dir == null) {
-        debugPrint('[SherpaTts] 模型文件复制失败');
+        debugPrint('[SherpaTts] 模型文件就位失败');
         return false;
       }
 
@@ -88,8 +200,9 @@ class SherpaTtsService {
       String espeakDataDir = '';
       try {
         espeakDataDir = await piper.extractEspeakNgData();
+        AppLogger.d('SherpaTts', 'espeak-ng-data 解包成功: $espeakDataDir');
       } catch (e) {
-        debugPrint('[SherpaTts] espeak-ng-data 解包失败 (英文音素化将不可用): $e');
+        AppLogger.e('SherpaTts', 'espeak-ng-data 解包失败 (英文音素化将不可用): $e');
       }
 
       // 临时目录 (isolate 内写 WAV 用)。
@@ -122,7 +235,7 @@ class SherpaTtsService {
           if (k != null && msg.wavPath.isNotEmpty) _cache[k] = msg.wavPath;
           if (c != null && !c.isCompleted) c.complete(msg.wavPath);
         } else if (msg is _IsolateError) {
-          debugPrint('[SherpaTts] isolate 错误: ${msg.message}');
+          AppLogger.e('SherpaTts', 'isolate 错误: ${msg.message}');
           if (!completer.isCompleted) completer.complete(false);
         }
       });
@@ -139,13 +252,19 @@ class SherpaTtsService {
       return false;
     } finally {
       _initializing = false;
+      _downloading = false;
     }
   }
 
-  /// 把中英模型文件从 assets 复制到应用支持目录，返回模型根目录路径。
+  /// 确保中英模型文件就位到应用支持目录，返回模型根目录路径。
   ///
   /// isolate 内无法访问 rootBundle，必须先把模型落盘。
-  Future<String?> _copyModelsToDisk() async {
+  ///
+  /// 就位顺序 (每文件独立判断)：
+  /// 1. 本地缓存已存在且非空 → 直接复用 (跳过网络)；
+  /// 2. 否则从远程直链下载 (Cloudflare R2)；
+  /// 3. 下载失败 (无网络 / 直链未配置) → 回退 assets 复制 (兼容本地调试/旧包)。
+  Future<String?> _ensureModelsOnDisk() async {
     try {
       final base = await getApplicationSupportDirectory();
       final root = p.join(base.path, 'tts_model');
@@ -154,40 +273,112 @@ class SherpaTtsService {
         await dir.create(recursive: true);
       }
 
-      const files = <String>[
-        // 中文模型 (sherpa v2.0 起无需 dict 分词目录，省略以节省体积)
-        'assets/tts_model/zh/vits-zh-hf-fanchen-C.onnx',
-        'assets/tts_model/zh/tokens.txt',
-        'assets/tts_model/zh/lexicon.txt',
-        'assets/tts_model/zh/date.fst',
-        'assets/tts_model/zh/number.fst',
-        'assets/tts_model/zh/phone.fst',
-        'assets/tts_model/zh/new_heteronym.fst',
-        // 英文模型
-        'assets/tts_model/en/en_US-libritts_r-medium.onnx',
-        'assets/tts_model/en/tokens.txt',
-      ];
+      final client = http.Client();
+      try {
+        for (final rel in TtsModelStore.rels) {
+          final target = p.join(root, rel);
+          final f = File(target);
 
-      for (final asset in files) {
-        final rel = asset.replaceFirst('assets/tts_model/', '');
-        final target = p.join(root, rel);
-        final f = File(target);
-        if (await f.exists()) continue; // 已复制跳过
-        try {
-          final data = await rootBundle.load(asset);
-          await f.create(recursive: true);
-          await f.writeAsBytes(
-            data.buffer.asUint8List(data.offsetInBytes, data.lengthInBytes),
-          );
-        } catch (e) {
-          // dict/ 目录文件 sherpa v2.0 起不再强制需要，缺失不阻断。
-          debugPrint('[SherpaTts] 复制 $asset 失败(可忽略): $e');
+          // 1. 本地已就位 (非空) → 跳过。
+          if (await _fileUsable(f)) continue;
+
+          // 2. 远程下载。
+          final url = TtsModelStore.remoteUrl(rel);
+          final downloaded = await _download(client, url, target, label: rel);
+          if (downloaded) continue;
+
+          // 3. 回退 assets 复制。
+          await _copyFromAssets(rel, target);
         }
+      } finally {
+        client.close();
       }
       return root;
     } catch (e) {
-      debugPrint('[SherpaTts] 复制模型目录失败: $e');
+      debugPrint('[SherpaTts] 模型目录就位失败: $e');
       return null;
+    }
+  }
+
+  /// 判断文件是否已就位且非空。
+  Future<bool> _fileUsable(File f) async {
+    try {
+      return await f.exists() && await f.length() > 0;
+    } catch (_) {
+      return false;
+    }
+  }
+
+  /// 从远程直链下载文件到 [target]，成功返回 true。
+  Future<bool> _download(
+    http.Client client,
+    String url,
+    String target, {
+    required String label,
+  }) async {
+    try {
+      debugPrint('[SherpaTts] 下载模型: $label');
+      final resp = await client.send(http.Request('GET', Uri.parse(url)));
+
+      if (resp.statusCode != 200) {
+        debugPrint('[SherpaTts] 下载失败 (HTTP ${resp.statusCode}): $label');
+        return false;
+      }
+
+      final f = File(target);
+      await f.parent.create(recursive: true);
+      final sink = f.openWrite();
+      var received = 0;
+      final total = resp.contentLength ?? 0;
+      try {
+        await for (final chunk in resp.stream) {
+          sink.add(chunk);
+          received += chunk.length;
+          // 上报进度 (节流：仅每 512KB 或完成时回调，避免高频刷新 UI)。
+          if (chunk.length > 0 &&
+              (received % (512 * 1024) < chunk.length || received >= total)) {
+            onModelDownloadProgress?.call(received, total);
+          }
+        }
+      } finally {
+        await sink.close();
+      }
+      // 完成时确保最后一次进度到位。
+      onModelDownloadProgress?.call(received, total);
+
+      // 校验：下载后文件大小应 > 0；若服务端给了 content-length 则校验完整性。
+      if (received <= 0) {
+        debugPrint('[SherpaTts] 下载结果为空: $label');
+        if (await f.exists()) await f.delete();
+        return false;
+      }
+      if (total > 0 && received != total) {
+        debugPrint('[SherpaTts] 下载不完整 ($received/$total): $label');
+        if (await f.exists()) await f.delete();
+        return false;
+      }
+      debugPrint('[SherpaTts] 下载完成 ($received bytes): $label');
+      return true;
+    } catch (e) {
+      debugPrint('[SherpaTts] 下载异常: $label -> $e');
+      return false;
+    }
+  }
+
+  /// 从 assets 复制模型文件到磁盘 (旧包兼容 / 本地调试回退)。
+  Future<void> _copyFromAssets(String rel, String target) async {
+    final asset = 'assets/tts_model/$rel';
+    try {
+      final data = await rootBundle.load(asset);
+      final f = File(target);
+      await f.parent.create(recursive: true);
+      await f.writeAsBytes(
+        data.buffer.asUint8List(data.offsetInBytes, data.lengthInBytes),
+      );
+      debugPrint('[SherpaTts] 从 assets 复制: $rel');
+    } catch (e) {
+      // dict/ 目录文件 sherpa v2.0 起不再强制需要，缺失不阻断。
+      debugPrint('[SherpaTts] 复制 $asset 失败(可忽略): $e');
     }
   }
 
@@ -210,10 +401,7 @@ class SherpaTtsService {
 
     try {
       // 主段朗读。
-      final mainOk = await _synthesizeAndPlay(
-        text,
-        subject: subject,
-      );
+      final mainOk = await _synthesizeAndPlay(text, subject: subject);
       if (!mainOk) return false;
 
       // 英文追加中文释义 (切中文模型)。
@@ -239,23 +427,57 @@ class SherpaTtsService {
   /// 进页面时预热当前条目：模型就绪后触发 isolate 合成并把 WAV 存入 [_cache]，
   /// 首次点击「听一遍」直接命中缓存，免去合成等待。
   ///
-  /// 同 key 已在途/已缓存时直接跳过，避免重复派发。
+  /// 同 key 已在途/已缓存/已入队时直接跳过，避免重复派发。
+  ///
+  /// 注意：本方法走**串行预合成队列** (非立即派发)。isolate 单线程串行处理
+  /// 合成请求，若瞬间派发海量请求会造成队尾超时，故后台预载逐个串行执行。
   Future<void> prefetch(String text, {required String subject}) async {
     final ok = await ensureReady();
     if (!ok || _port == null) return;
     final key = _cacheKey(text, subject);
-    if (_cache.containsKey(key) || _inflight.containsKey(key)) return;
-    unawaited(_requestSynth(text, subject: subject));
+    if (_cache.containsKey(key) ||
+        _inflight.containsKey(key) ||
+        _prefetchQueued.contains(key)) {
+      return;
+    }
+    _prefetchQueued.add(key);
+    _prefetchQueue.add(_PrefetchTask(text, subject));
+    // 启动/继续串行排空队列。
+    unawaited(_drainPrefetchQueue());
   }
 
   /// 预合成并**等待完成** (不播放)。
   ///
   /// 进页面首屏用：模型就绪后同步合成当前条目全部分段并落盘，
   /// 保证首次点击「听一遍」直接命中缓存、零等待发声。
+  ///
+  /// 本方法**直接派发** (不走后台队列)，保证首屏关键条目立即合成，
+  /// 不受后台预载队列排队的延迟影响。
   Future<void> prefetchSync(String text, {required String subject}) async {
     final ok = await ensureReady();
     if (!ok || _port == null) return;
+    final key = _cacheKey(text, subject);
+    _prefetchQueued.add(key); // 标记已处理，避免后台队列再次重复合成
     await _requestSynth(text, subject: subject);
+  }
+
+  /// 串行排空预合成队列：一次只发一个请求，await 完成后再发下一个。
+  Future<void> _drainPrefetchQueue() async {
+    if (_prefetchDraining) return;
+    _prefetchDraining = true;
+    try {
+      while (_prefetchQueue.isNotEmpty) {
+        final task = _prefetchQueue.removeAt(0);
+        final key = _cacheKey(task.text, task.subject);
+        // 该 key 已出队，允许未来再次入队 (合成失败可重试)。
+        _prefetchQueued.remove(key);
+        // 已缓存/已在途则跳过本次 (直接派发下一个)。
+        if (_cache.containsKey(key) || _inflight.containsKey(key)) continue;
+        await _requestSynth(task.text, subject: task.subject);
+      }
+    } finally {
+      _prefetchDraining = false;
+    }
   }
 
   /// 合成一段文本并播放，返回是否成功。
@@ -265,7 +487,7 @@ class SherpaTtsService {
   }) async {
     final wavPath = await _requestSynth(text, subject: subject);
     if (wavPath == null) {
-      debugPrint('[SherpaTts] 合成失败或结果为空: "$text"');
+      AppLogger.w('SherpaTts', '合成失败或结果为空: "$text" (subject=$subject)');
       return false;
     }
 
@@ -274,10 +496,7 @@ class SherpaTtsService {
   }
 
   /// 向 isolate 发送合成请求，等待返回 WAV 文件路径 (isolate 内完成写盘)。
-  Future<String?> _requestSynth(
-    String text, {
-    required String subject,
-  }) async {
+  Future<String?> _requestSynth(String text, {required String subject}) async {
     final port = _port;
     if (port == null) return null;
 
@@ -298,8 +517,7 @@ class SherpaTtsService {
     // 拼音声母纯辅音：用英文模型按 eSpeak 音素直接合成 (text 即音素串)。
     final isPhoneme = subject == LearnSubjects.phoneme;
     final isEnglish = subject == LearnSubjects.english || isPhoneme;
-    final phonemeCodepoints =
-        isPhoneme ? [text.runes.toList()] : null;
+    final phonemeCodepoints = isPhoneme ? [text.runes.toList()] : null;
 
     // 发起新合成：登记在途标记，供并发请求复用。
     final completer = Completer<String?>();
@@ -308,12 +526,14 @@ class SherpaTtsService {
     _pendingKey[seq] = key;
     _pending[seq] = completer;
 
-    port.send(_SynthRequest(
-      seq: seq,
-      text: text,
-      isEnglish: isEnglish,
-      phonemeCodepoints: phonemeCodepoints,
-    ));
+    port.send(
+      _SynthRequest(
+        seq: seq,
+        text: text,
+        isEnglish: isEnglish,
+        phonemeCodepoints: phonemeCodepoints,
+      ),
+    );
 
     try {
       return await completer.future.timeout(
@@ -375,6 +595,8 @@ class SherpaTtsService {
   void dispose() {
     _pending.clear();
     _inflight.clear();
+    _prefetchQueue.clear();
+    _prefetchQueued.clear();
     _ready = false;
     _isolate?.kill(priority: Isolate.immediate);
     _isolate = null;
@@ -434,6 +656,13 @@ class _SynthResult {
   final int seq;
   final String wavPath; // 空串表示合成失败
   _SynthResult({required this.seq, required this.wavPath});
+}
+
+/// 后台预合成队列元素。
+class _PrefetchTask {
+  final String text;
+  final String subject;
+  _PrefetchTask(this.text, this.subject);
 }
 
 /// 输出增益：补偿 Sherpa 模型输出幅度偏低导致的「声音偏小」。
@@ -529,8 +758,9 @@ void _isolateMain(_IsolateInit init) async {
           if (audio.samples.isNotEmpty && audio.sampleRate > 0) {
             // 增益补偿：拼音/英文单词用 _kNormalGain，拼音声母纯辅音用 _kPhonemeGain。
             // 用户反馈两类发音都偏轻，统一限幅防削波。
-            final gain =
-                msg.phonemeCodepoints != null ? _kPhonemeGain : _kNormalGain;
+            final gain = msg.phonemeCodepoints != null
+                ? _kPhonemeGain
+                : _kNormalGain;
             final samples = _applyGain(audio.samples, gain);
             // 在 isolate 内写 WAV (bindings 已就绪)。
             wavPath = p.join(
@@ -544,13 +774,13 @@ void _isolateMain(_IsolateInit init) async {
             );
           }
         } catch (e) {
-          debugPrint('[SherpaTts.isolate] 合成异常: $e');
+          AppLogger.e('SherpaTts.isolate', '合成异常: $e');
         }
         sendPort.send(_SynthResult(seq: msg.seq, wavPath: wavPath));
       }
     }
   } catch (e) {
-    debugPrint('[SherpaTts.isolate] 初始化失败: $e');
+    AppLogger.e('SherpaTts.isolate', '初始化失败: $e');
     sendPort.send(_IsolateError('$e'));
   }
 }
@@ -566,32 +796,49 @@ sherpa_onnx.GeneratedAudio _synthesize({
   if (isEnglish) {
     if (phonemeCodepoints != null) {
       // 拼音声母纯辅音：直接使用传入的 eSpeak 音素串合成 (不依赖 phonemize)。
+      AppLogger.d('SherpaTts', '英文合成(纯辅音音素): "$text"');
       final gen = sherpa_onnx.OfflineTtsGenerationConfig(
         sid: 0,
         speed: 1.0,
         silenceScale: 0.3,
         phonemeCodepoints: phonemeCodepoints,
       );
-      return en.generateWithConfig(text: '', config: gen);
+      final audio = en.generateWithConfig(text: '', config: gen);
+      AppLogger.d(
+        'SherpaTts',
+        '英文纯辅音合成结果: samples=${audio.samples.length} sr=${audio.sampleRate}',
+      );
+      return audio;
     }
     // 英文单词：先 espeak-ng 音素化，再传 phonemeCodepoints。
-    final sentences = piper.PiperPhonemize.phonemize(text, voice: 'en-us')
-        .where((s) => s.isNotEmpty)
-        .toList();
+    List<List<int>> sentences;
+    try {
+      sentences = piper.PiperPhonemize.phonemize(
+        text,
+        voice: 'en-us',
+      ).where((s) => s.isNotEmpty).toList();
+    } catch (e) {
+      AppLogger.e('SherpaTts', '英文音素化异常: "$text" -> $e');
+      return sherpa_onnx.GeneratedAudio(samples: Float32List(0), sampleRate: 0);
+    }
     if (sentences.isEmpty) {
       // 音素化失败，返回空。
-      return sherpa_onnx.GeneratedAudio(
-        samples: Float32List(0),
-        sampleRate: 0,
-      );
+      AppLogger.w('SherpaTts', '英文音素化结果为空: "$text"');
+      return sherpa_onnx.GeneratedAudio(samples: Float32List(0), sampleRate: 0);
     }
+    AppLogger.d('SherpaTts', '英文音素化成功: "$text" -> $sentences');
     final gen = sherpa_onnx.OfflineTtsGenerationConfig(
       sid: 0,
       speed: 1.0,
       silenceScale: 0.3,
       phonemeCodepoints: sentences,
     );
-    return en.generateWithConfig(text: '', config: gen);
+    final audio = en.generateWithConfig(text: '', config: gen);
+    AppLogger.d(
+      'SherpaTts',
+      '英文合成结果: samples=${audio.samples.length} sr=${audio.sampleRate}',
+    );
+    return audio;
   } else {
     // 中文：直接合成 (模型内置 jieba 分词)。
     return zh.generate(text: text, sid: 0, speed: 1.0);

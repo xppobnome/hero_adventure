@@ -120,7 +120,10 @@ class LocalStorageRepo {
 
   /// 保存调试快照 (进入调试模式时调用)。返回是否已存在旧快照。
   /// 若已有快照则跳过，避免覆盖「第一次进入」时保存的原始状态。
-  Future<void> saveDebugSnapshot(FamilyProfile profile, String deviceRole) async {
+  Future<void> saveDebugSnapshot(
+    FamilyProfile profile,
+    String deviceRole,
+  ) async {
     if (_box.get(keyDebugSnapshot) != null) return;
     await _box.put(keyDebugSnapshot, jsonEncode(profile.toJson()));
     await _box.put(keyDebugSnapshotDeviceRole, deviceRole);
@@ -130,9 +133,7 @@ class LocalStorageRepo {
   FamilyProfile? getDebugSnapshot() {
     final data = _box.get(keyDebugSnapshot);
     if (data == null) return null;
-    return FamilyProfile.fromJson(
-      Map<String, dynamic>.from(jsonDecode(data)),
-    );
+    return FamilyProfile.fromJson(Map<String, dynamic>.from(jsonDecode(data)));
   }
 
   /// 读取调试快照保存时的设备角色。
@@ -177,10 +178,8 @@ class LocalStorageRepo {
       'datasync_auto_check'; // 启动时检查云端数据版本开关
   static const String keyLastSyncedUploadAt =
       'last_synced_upload_at'; // 本机最近一次同步的云端时间戳
-  static const String keyUiMode =
-      'ui_mode'; // 界面样式：'auto' / 'phone' / 'tablet'
-  static const String keyShowNavLabels =
-      'show_nav_labels'; // 家长菜单栏是否展示文字标签
+  static const String keyUiMode = 'ui_mode'; // 界面样式：'auto' / 'phone' / 'tablet'
+  static const String keyShowNavLabels = 'show_nav_labels'; // 家长菜单栏是否展示文字标签
   static const String keyUploadOnExit =
       'upload_on_exit'; // 退出前上传数据到云端（若已绑定 WebDAV）
   static const String keyForceSync =
@@ -195,6 +194,8 @@ class LocalStorageRepo {
       'shortcut_icon_path'; // 桌面快捷方式自定义图标本地路径
   static const String keyUseCustomAppDisplay =
       'use_custom_app_display'; // 启动图/关于页是否显示自定义头像与名字
+  static const String keyDebugLogEnabled =
+      'debug_log_enabled'; // 是否开启详细日志（用于排查问题）
 
   bool getUpdateAutoCheck() =>
       _box.get(keyUpdateAutoCheck) as bool? ?? true; // 默认开启
@@ -215,8 +216,7 @@ class LocalStorageRepo {
       _box.put(keyUpdatePermanentIgnored, value);
 
   /// 更新源：'gitee'（默认，国内网络）/ 'github'。
-  String getUpdateSource() =>
-      _box.get(keyUpdateSource) as String? ?? 'gitee';
+  String getUpdateSource() => _box.get(keyUpdateSource) as String? ?? 'gitee';
 
   Future<void> setUpdateSource(String source) =>
       _box.put(keyUpdateSource, source);
@@ -279,8 +279,7 @@ class LocalStorageRepo {
   /// 退出前是否上传数据到云端（默认开启）。
   bool getUploadOnExit() => _box.get(keyUploadOnExit) as bool? ?? true;
 
-  Future<void> setUploadOnExit(bool value) =>
-      _box.put(keyUploadOnExit, value);
+  Future<void> setUploadOnExit(bool value) => _box.put(keyUploadOnExit, value);
 
   /// 打卡/兑换/审核等变更时是否强制同步到云端（默认开启）。
   bool getForceSync() => _box.get(keyForceSync) as bool? ?? true;
@@ -288,7 +287,8 @@ class LocalStorageRepo {
   Future<void> setForceSync(bool value) => _box.put(keyForceSync, value);
 
   /// 桌面快捷方式：是否用儿童头像作图标（默认 false）。
-  bool getShortcutUseAvatar() => _box.get(keyShortcutUseAvatar) as bool? ?? false;
+  bool getShortcutUseAvatar() =>
+      _box.get(keyShortcutUseAvatar) as bool? ?? false;
 
   Future<void> setShortcutUseAvatar(bool value) =>
       _box.put(keyShortcutUseAvatar, value);
@@ -319,6 +319,12 @@ class LocalStorageRepo {
 
   Future<void> setUseCustomAppDisplay(bool value) =>
       _box.put(keyUseCustomAppDisplay, value);
+
+  /// 是否开启详细日志（默认关闭，用于排查问题时临时开启）。
+  bool getDebugLogEnabled() => _box.get(keyDebugLogEnabled) as bool? ?? false;
+
+  Future<void> setDebugLogEnabled(bool value) =>
+      _box.put(keyDebugLogEnabled, value);
 
   // ===== 全量快照 (供二维码/WebDAV/本地备份 同步) =====
   //
@@ -489,7 +495,9 @@ class LocalStorageRepo {
       await setUpdateIgnoredVersion(settings['updateIgnoredVersion'] as String);
     }
     if (settings['updatePermanentIgnored'] is bool) {
-      await setUpdatePermanentIgnored(settings['updatePermanentIgnored'] as bool);
+      await setUpdatePermanentIgnored(
+        settings['updatePermanentIgnored'] as bool,
+      );
     }
     if (settings['updateSource'] is String) {
       await setUpdateSource(settings['updateSource'] as String);

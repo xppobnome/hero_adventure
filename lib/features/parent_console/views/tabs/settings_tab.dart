@@ -260,10 +260,7 @@ class SettingsTab extends ConsumerWidget {
               '关于本应用',
               style: TextStyle(fontSize: 16.sp, fontWeight: FontWeight.bold),
             ),
-            subtitle: Text(
-              '软件信息、版本号与软件介绍',
-              style: TextStyle(fontSize: 14.sp),
-            ),
+            subtitle: Text('软件信息、版本号与软件介绍', style: TextStyle(fontSize: 14.sp)),
             trailing: const Icon(Icons.arrow_forward_ios, size: 16),
             onTap: () {
               Navigator.push(
@@ -303,9 +300,9 @@ class SettingsTab extends ConsumerWidget {
               // 下次启动时读到 'unbound' 会进入身份识别界面。
               ref.read(storageProvider).saveDeviceRole('unbound');
               Navigator.pop(ctx);
-              ScaffoldMessenger.of(
-                context,
-              ).showSnackBar(const SnackBar(content: Text('已解除绑定，下次打开将回到身份识别界面')));
+              ScaffoldMessenger.of(context).showSnackBar(
+                const SnackBar(content: Text('已解除绑定，下次打开将回到身份识别界面')),
+              );
             },
             child: const Text('确认解除'),
           ),
@@ -317,14 +314,13 @@ class SettingsTab extends ConsumerWidget {
               // 先关闭对话框，再弹回根路由 (InitialRouteWrapper)，
               // 使 home 依据 deviceRole='unbound' 重建为终端身份识别界面。
               Navigator.pop(ctx);
-              Navigator.of(context, rootNavigator: true)
-                  .popUntil((route) => route.isFirst);
+              Navigator.of(
+                context,
+                rootNavigator: true,
+              ).popUntil((route) => route.isFirst);
             },
             style: ElevatedButton.styleFrom(backgroundColor: Colors.orange),
-            child: const Text(
-              '确认解除并返回',
-              style: TextStyle(color: Colors.white),
-            ),
+            child: const Text('确认解除并返回', style: TextStyle(color: Colors.white)),
           ),
         ],
       ),

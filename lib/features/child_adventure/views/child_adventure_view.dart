@@ -8,6 +8,7 @@ import '../../../core/utils/audio_manager.dart';
 import '../../../core/utils/image_compressor.dart';
 import '../../../core/widgets/hero_showcase_dialog.dart';
 import '../../../core/widgets/pin_input_dialog.dart';
+import '../../../core/widgets/tts_model_download_dialog.dart';
 import '../../../core/widgets/ultraman_visuals.dart';
 import '../../../domain/check_in_logic.dart';
 import '../../../domain/hero_system.dart';
@@ -245,15 +246,16 @@ class _ChildAdventureViewState extends ConsumerState<ChildAdventureView> {
   }
 
   Future<void> _showUnlockDeviceDialog() async {
-    debugPrint('[PIN解除] 打开解除绑定对话框，deviceRole=${ref.read(deviceRoleProvider)}, childId=${widget.childId}');
+    debugPrint(
+      '[PIN解除] 打开解除绑定对话框，deviceRole=${ref.read(deviceRoleProvider)}, childId=${widget.childId}',
+    );
     final unlocked = await showDialog<bool>(
       context: context,
       builder: (ctx) => PinInputDialog(
         title: '安全锁 - 解除设备绑定',
         subtitle: '请输入家长 PIN 码解锁',
         onSubmit: (pin) async {
-          final correctPin =
-              ref.read(familyProfileProvider)?.pinCode ?? '0000';
+          final correctPin = ref.read(familyProfileProvider)?.pinCode ?? '0000';
           if (pin == correctPin) {
             // 仅返回 true 让对话框关闭；状态更新与导航放到对话框关闭后，
             // 避免更新 deviceRole 触发 InitialRouteWrapper 重建、提前销毁
@@ -301,6 +303,32 @@ class _ChildAdventureViewState extends ConsumerState<ChildAdventureView> {
     // 进入「地球防卫图」即后台预缓存识字/英语 TTS，使儿童进入闯关页点击
     // 「听一遍」时即时发声、零延迟 (拼音模块为视频，无需预缓存)。
     _prefetchLearnTts();
+    // 首次进入检测语音资源是否就位：识字/英语跟读依赖离线 TTS 模型，
+    // 缺失时引导下载，否则孩子进入闯关页会「听不到声音」。
+    WidgetsBinding.instance.addPostFrameCallback((_) => _checkTtsModel());
+  }
+
+  /// 检测语音模型资源是否就位，缺失时弹出下载对话框。
+  ///
+  /// 仅当存在识字/英语学习任务时才需要检测 (拼音为视频、数学不依赖语音)。
+  Future<void> _checkTtsModel() async {
+    if (!mounted) return;
+    final tasks = ref.read(taskProvider);
+    final needTts = tasks.any(
+      (t) =>
+          t.isLearnTask &&
+          (t.learnSubject == LearnSubjects.hanzi ||
+              t.learnSubject == LearnSubjects.english),
+    );
+    if (!needTts) return;
+
+    final ready = await SpeechService.instance.isModelReady();
+    if (ready || !mounted) return;
+
+    // 模型未就位：弹出下载引导对话框。
+    await showTtsModelDownloadDialog(context);
+    // 下载完成后重新预热，让后续进入跟读页即时发声。
+    if (mounted) _prefetchLearnTts();
   }
 
   /// 后台预缓存识字/英语学科的 TTS (模型预热 + 全条目预合成)。
@@ -319,22 +347,26 @@ class _ChildAdventureViewState extends ConsumerState<ChildAdventureView> {
     if (learnTasks.isEmpty) return;
     // 先预热离线 TTS 模型 (加载中英双模型)，再后台预合成各任务的全部朗读分段
     // (prefetch 自带在途去重，重复派发不会并发重复合成)。
-    unawaited(SpeechService.instance.warmUp().then((ok) {
-      if (!ok || !mounted) return;
-      for (final task in learnTasks) {
-        final items = LearnQuizGenerator(
-          subject: task.learnSubject,
-          scope: task.learnScope,
-          count: task.learnCount,
-          ordered: task.learnOrdered,
-        ).generate();
-        for (final item in items) {
-          for (final seg in LearnDisplay.speakSegments(item)) {
-            SpeechService.instance.prefetch(seg.$1, subject: seg.$2);
+    unawaited(
+      SpeechService.instance.warmUp().then((ok) {
+        if (!ok || !mounted) return;
+        for (final task in learnTasks) {
+          // 用确定性种子，确保与闯关页首次进入抽到的条目一致，预缓存才能命中。
+          final items = LearnQuizGenerator(
+            subject: task.learnSubject,
+            scope: task.learnScope,
+            count: task.learnCount,
+            ordered: task.learnOrdered,
+            rng: LearnQuizGenerator.seedFromTaskId(task.id),
+          ).generate();
+          for (final item in items) {
+            for (final seg in LearnDisplay.speakSegments(item)) {
+              SpeechService.instance.prefetch(seg.$1, subject: seg.$2);
+            }
           }
         }
-      }
-    }));
+      }),
+    );
   }
 
   @override
@@ -356,101 +388,102 @@ class _ChildAdventureViewState extends ConsumerState<ChildAdventureView> {
         }
       },
       child: Scaffold(
-      appBar: AppBar(
-        title: Text(
-          _selectedTask == null
-              ? '地球防卫图 - ${child.name}'
-              : _selectedTask!.title,
-          style: const TextStyle(fontSize: 18),
-        ),
-        automaticallyImplyLeading: false,
-        leading: IconButton(
-          icon: Icon(
-            _selectedTask == null ? Icons.lock_outline : Icons.arrow_back,
-            size: 24,
+        appBar: AppBar(
+          title: Text(
+            _selectedTask == null
+                ? '地球防卫图 - ${child.name}'
+                : _selectedTask!.title,
+            style: const TextStyle(fontSize: 18),
           ),
-          onPressed: _selectedTask == null
-              ? _showUnlockDeviceDialog
-              : () => setState(() => _selectedTask = null),
-        ),
-        backgroundColor: UltramanTheme.deepSpace,
-        actions: [
-          if (_selectedTask == null) ...[
-            IconButton(
-              icon: const Icon(Icons.store, size: 24),
-              tooltip: '能量兑换站',
-              onPressed: () {
-                Navigator.push(
-                  context,
-                  MaterialPageRoute(
-                    builder: (_) => RewardShopView(childId: widget.childId),
-                  ),
-                );
-              },
+          automaticallyImplyLeading: false,
+          leading: IconButton(
+            icon: Icon(
+              _selectedTask == null ? Icons.lock_outline : Icons.arrow_back,
+              size: 24,
             ),
-            IconButton(
-              icon: const Icon(Icons.auto_awesome, size: 24),
-              tooltip: '英雄图鉴',
-              onPressed: () {
-                Navigator.push(
-                  context,
-                  MaterialPageRoute(
-                    builder: (_) => HeroGalleryView(childId: widget.childId),
-                  ),
-                );
-              },
-            ),
-            IconButton(
-              icon: const Icon(Icons.settings, size: 24),
-              tooltip: '设置',
-              onPressed: () {
-                Navigator.push(
-                  context,
-                  MaterialPageRoute(
-                    builder: (_) => ChildSettingsView(childId: widget.childId),
-                  ),
-                );
-              },
-            ),
-          ],
-        ],
-      ),
-      body: Stack(
-        children: [
-          const Positioned.fill(child: UltramanStarfield()),
-          // 主体：看板固定在顶部，下方切换「任务选择」或「关卡地图」
-          Column(
-            children: [
-              // 顶部看板
-              ChildDashboard(childId: widget.childId),
-              // 主体内容区
-              Expanded(
-                child: _selectedTask == null
-                    ? SafeArea(top: false, child: _buildTaskSelection(tasks))
-                    : _buildLevelMap(_selectedTask!),
+            onPressed: _selectedTask == null
+                ? _showUnlockDeviceDialog
+                : () => setState(() => _selectedTask = null),
+          ),
+          backgroundColor: UltramanTheme.deepSpace,
+          actions: [
+            if (_selectedTask == null) ...[
+              IconButton(
+                icon: const Icon(Icons.store, size: 24),
+                tooltip: '能量兑换站',
+                onPressed: () {
+                  Navigator.push(
+                    context,
+                    MaterialPageRoute(
+                      builder: (_) => RewardShopView(childId: widget.childId),
+                    ),
+                  );
+                },
+              ),
+              IconButton(
+                icon: const Icon(Icons.auto_awesome, size: 24),
+                tooltip: '英雄图鉴',
+                onPressed: () {
+                  Navigator.push(
+                    context,
+                    MaterialPageRoute(
+                      builder: (_) => HeroGalleryView(childId: widget.childId),
+                    ),
+                  );
+                },
+              ),
+              IconButton(
+                icon: const Icon(Icons.settings, size: 24),
+                tooltip: '设置',
+                onPressed: () {
+                  Navigator.push(
+                    context,
+                    MaterialPageRoute(
+                      builder: (_) =>
+                          ChildSettingsView(childId: widget.childId),
+                    ),
+                  );
+                },
               ),
             ],
-          ),
-          // 攻击/庆祝特效覆盖层 (跟随当前出战英雄)
-          if (_isPlayingAnimation)
-            Positioned.fill(
-              child: _showVictory
-                  ? CelebrationEffect(
-                      title: '战斗胜利',
-                      subtitle: '获得奖励',
-                      onCompleted: () {
-                        if (mounted) {
-                          setState(() {
-                            _isPlayingAnimation = false;
-                            _showVictory = false;
-                          });
-                        }
-                      },
-                    )
-                  : BeamAttackEffect(hero: _activeHero),
+          ],
+        ),
+        body: Stack(
+          children: [
+            const Positioned.fill(child: UltramanStarfield()),
+            // 主体：看板固定在顶部，下方切换「任务选择」或「关卡地图」
+            Column(
+              children: [
+                // 顶部看板
+                ChildDashboard(childId: widget.childId),
+                // 主体内容区
+                Expanded(
+                  child: _selectedTask == null
+                      ? SafeArea(top: false, child: _buildTaskSelection(tasks))
+                      : _buildLevelMap(_selectedTask!),
+                ),
+              ],
             ),
-        ],
-      ),
+            // 攻击/庆祝特效覆盖层 (跟随当前出战英雄)
+            if (_isPlayingAnimation)
+              Positioned.fill(
+                child: _showVictory
+                    ? CelebrationEffect(
+                        title: '战斗胜利',
+                        subtitle: '获得奖励',
+                        onCompleted: () {
+                          if (mounted) {
+                            setState(() {
+                              _isPlayingAnimation = false;
+                              _showVictory = false;
+                            });
+                          }
+                        },
+                      )
+                    : BeamAttackEffect(hero: _activeHero),
+              ),
+          ],
+        ),
       ),
     );
   }
@@ -509,7 +542,7 @@ class _ChildAdventureViewState extends ConsumerState<ChildAdventureView> {
         border: Border.all(color: _statusColor(status), width: 2),
       ),
       child: InkWell(
-        onTap: () {
+        onTap: () async {
           // 数学题学习任务：直接进入做题界面 (当天已完成仍可练习，但不再发奖励)
           if (task.isMathTask) {
             Navigator.push(
@@ -520,6 +553,16 @@ class _ChildAdventureViewState extends ConsumerState<ChildAdventureView> {
               ),
             );
           } else if (task.isLearnTask) {
+            // 识字/英语跟读依赖离线 TTS 模型：进入前确保模型已就位，
+            // 缺失时引导下载，避免进入后「听不到声音」。
+            if (task.learnSubject == LearnSubjects.hanzi ||
+                task.learnSubject == LearnSubjects.english) {
+              final ready = await SpeechService.instance.isModelReady();
+              if (!ready && mounted) {
+                await showTtsModelDownloadDialog(context);
+              }
+              if (!mounted) return;
+            }
             // 学习跟读任务：直接进入统一跟读界面 (拼音/识字/英语共用)
             Navigator.push(
               context,
@@ -584,7 +627,10 @@ class _ChildAdventureViewState extends ConsumerState<ChildAdventureView> {
                       if (task.requirePhoto) ...[
                         const SizedBox(width: 6),
                         Container(
-                          padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                          padding: const EdgeInsets.symmetric(
+                            horizontal: 6,
+                            vertical: 2,
+                          ),
                           decoration: BoxDecoration(
                             color: Colors.orange.withValues(alpha: 0.15),
                             borderRadius: BorderRadius.circular(4),
@@ -592,7 +638,11 @@ class _ChildAdventureViewState extends ConsumerState<ChildAdventureView> {
                           child: const Row(
                             mainAxisSize: MainAxisSize.min,
                             children: [
-                              Icon(Icons.photo_camera, size: 12, color: Colors.orange),
+                              Icon(
+                                Icons.photo_camera,
+                                size: 12,
+                                color: Colors.orange,
+                              ),
                               SizedBox(width: 2),
                               Text(
                                 '需拍照',
@@ -837,7 +887,12 @@ class _MultiPhotoSheetState extends State<_MultiPhotoSheet> {
         color: Colors.white,
         borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
       ),
-      padding: EdgeInsets.fromLTRB(16, 16, 16, MediaQuery.of(context).padding.bottom + 16),
+      padding: EdgeInsets.fromLTRB(
+        16,
+        16,
+        16,
+        MediaQuery.of(context).padding.bottom + 16,
+      ),
       child: Column(
         mainAxisSize: MainAxisSize.min,
         crossAxisAlignment: CrossAxisAlignment.stretch,
@@ -866,7 +921,10 @@ class _MultiPhotoSheetState extends State<_MultiPhotoSheet> {
             Padding(
               padding: const EdgeInsets.symmetric(vertical: 24),
               child: Center(
-                child: Text('还没有照片，点击下方「继续拍照」', style: TextStyle(color: Colors.grey.shade500, fontSize: 14)),
+                child: Text(
+                  '还没有照片，点击下方「继续拍照」',
+                  style: TextStyle(color: Colors.grey.shade500, fontSize: 14),
+                ),
               ),
             )
           else
@@ -888,10 +946,7 @@ class _MultiPhotoSheetState extends State<_MultiPhotoSheet> {
                     children: [
                       ClipRRect(
                         borderRadius: BorderRadius.circular(8),
-                        child: Image.file(
-                          File(path),
-                          fit: BoxFit.cover,
-                        ),
+                        child: Image.file(File(path), fit: BoxFit.cover),
                       ),
                       Positioned(
                         top: 4,
@@ -904,7 +959,11 @@ class _MultiPhotoSheetState extends State<_MultiPhotoSheet> {
                               color: Colors.black54,
                               shape: BoxShape.circle,
                             ),
-                            child: const Icon(Icons.close, color: Colors.white, size: 16),
+                            child: const Icon(
+                              Icons.close,
+                              color: Colors.white,
+                              size: 16,
+                            ),
                           ),
                         ),
                       ),

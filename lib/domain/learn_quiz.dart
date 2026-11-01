@@ -24,6 +24,19 @@ class LearnQuizGenerator {
     math.Random? rng,
   }) : _rng = rng ?? math.Random();
 
+  /// 基于任务稳定标识生成确定性随机源，使同一任务多次抽题结果一致。
+  ///
+  /// 用于「地球防卫图预缓存」与「闯关页首次进入」共享同一条目序列，
+  /// 保证预缓存能命中闯关页实际显示的条目 (否则随机模式下两者条目不同，
+  /// 预缓存形同虚设)。「重做一遍」等需要重新随机时改用 [LearnQuizGenerator] 默认构造。
+  static math.Random seedFromTaskId(String taskId) {
+    var h = 0;
+    for (final c in taskId.codeUnits) {
+      h = (h * 31 + c) & 0x7fffffff;
+    }
+    return math.Random(h);
+  }
+
   /// 抽取跟读条目 (去重；不足时返回可得的全部)。
   ///
   /// - 顺序模式 ([ordered] = true)：按字库原始顺序返回**全部**条目

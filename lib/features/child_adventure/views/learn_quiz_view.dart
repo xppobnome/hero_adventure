@@ -1,5 +1,6 @@
 import 'dart:async';
 import 'dart:math';
+import 'dart:math' as math;
 
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -44,7 +45,6 @@ class _LearnQuizViewState extends ConsumerState<LearnQuizView> {
   bool _showRewardAnim = false;
   bool _rewardGranted = false;
   bool _englishTtsMissing = false;
-  bool _preloaded = false;
 
   @override
   void initState() {
@@ -58,7 +58,6 @@ class _LearnQuizViewState extends ConsumerState<LearnQuizView> {
       unawaited(SpeechService.instance.warmUp().then((ok) async {
         if (!ok || !mounted) return;
         await _prefetchCurrent(includeNext: true, wait: true);
-        if (mounted) setState(() => _preloaded = true);
         unawaited(_prefetchAll()); // 后台预载剩余全部条目
       }));
     }
@@ -114,12 +113,19 @@ class _LearnQuizViewState extends ConsumerState<LearnQuizView> {
   }
 
   /// 抽题并重置状态。
-  void _generateItems() {
+  ///
+  /// [reshuffle] 为 true 时重新随机抽题 (「重做一遍」用)；默认 false，
+  /// 用基于任务 ID 的确定性种子抽题，与「地球防卫图」预缓存保持同一条目序列，
+  /// 保证预缓存命中、首点击零延迟。
+  void _generateItems({bool reshuffle = false}) {
     _items = LearnQuizGenerator(
       subject: widget.task.learnSubject,
       scope: widget.task.learnScope,
       count: widget.task.learnCount,
       ordered: widget.task.learnOrdered,
+      rng: reshuffle
+          ? math.Random()
+          : LearnQuizGenerator.seedFromTaskId(widget.task.id),
     ).generate();
     _statuses = List.generate(_items.length, (_) => LearnCardStatus.idle);
     _currentIndex = 0;
@@ -148,10 +154,27 @@ class _LearnQuizViewState extends ConsumerState<LearnQuizView> {
 
   /// 点「听一遍」：软件朗读当前条目 (中文补读词语，英文补读中文释义)。
   ///
-  /// 小喇叭动效 (active 声波) 仅持续 1 秒即结束，不随朗读时长变化；
-  /// 朗读音频在后台独立播放，即便动效已结束仍继续发声。
+  /// 小喇叭动效 (active 声波) 仅在真正播放时显示；模型尚未就绪时给出提示，
+  /// 不进入播放状态。
   Future<void> _speak() async {
     if (_finished || _items.isEmpty) return;
+    // 拼音模块走视频，不走 TTS 朗读。
+    if (_isPinyinVideo) return;
+
+    // 模型未就绪时提示，避免无声等待 (拼音视频页不适用)。
+    final ready = await SpeechService.instance.warmUp();
+    if (!mounted) return;
+    if (!ready) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('声音还在准备中，请稍后再试', style: TextStyle(fontSize: 14)),
+          backgroundColor: UltramanTheme.gold,
+          duration: Duration(seconds: 2),
+        ),
+      );
+      return;
+    }
+
     // 捕获本次朗读对应的条目索引，播放结束后校验索引未变再恢复视觉，
     // 避免播放期间儿童点「下一题」导致新条目状态被误重置。
     final index = _currentIndex;
@@ -221,9 +244,9 @@ class _LearnQuizViewState extends ConsumerState<LearnQuizView> {
     }
   }
 
-  /// 重做一遍：重新抽题。
+  /// 重做一遍：重新随机抽题。
   void _retry() {
-    setState(_generateItems);
+    setState(() => _generateItems(reshuffle: true));
   }
 
   String get _title {
@@ -481,7 +504,7 @@ class _LearnQuizViewState extends ConsumerState<LearnQuizView> {
         Expanded(
           child: ElevatedButton.icon(
             onPressed: canAct ? _speak : null,
-            icon: _SpeakerIcon(active: isPlaying, loading: !_preloaded),
+            icon: _SpeakerIcon(active: isPlaying),
             label: const Text('听一遍'),
             style: ElevatedButton.styleFrom(
               backgroundColor: UltramanTheme.blue,
@@ -594,13 +617,10 @@ class _LearnQuizViewState extends ConsumerState<LearnQuizView> {
 /// 「听一遍」喇叭图标动态组件。
 ///
 /// - [active] 朗读中：喇叭右侧三条声波动画 (高度起伏)，提示正在发声；
-/// - [loading] 预加载中 (模型预热 / 首条合成尚未完成)：喇叭整体脉冲缩放，
-///   给出「正在准备」的视觉反馈，避免儿童误以为卡顿；
-/// - 其余状态：静态喇叭图标。
+/// - 其余状态：静态喇叭图标 (不播放时不做任何动效，避免背景看似持续晃动)。
 class _SpeakerIcon extends StatefulWidget {
   final bool active;
-  final bool loading;
-  const _SpeakerIcon({this.active = false, this.loading = false});
+  const _SpeakerIcon({this.active = false});
 
   @override
   State<_SpeakerIcon> createState() => _SpeakerIconState();
@@ -613,10 +633,29 @@ class _SpeakerIconState extends State<_SpeakerIcon>
   @override
   void initState() {
     super.initState();
+    // 仅在 active 时驱动动画，停止时不 repeat，避免空闲状态持续重绘。
     _ctrl = AnimationController(
       vsync: this,
       duration: const Duration(milliseconds: 600),
-    )..repeat();
+    );
+    _syncAnimation();
+  }
+
+  @override
+  void didUpdateWidget(covariant _SpeakerIcon oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (oldWidget.active != widget.active) {
+      _syncAnimation();
+    }
+  }
+
+  void _syncAnimation() {
+    if (widget.active) {
+      _ctrl.repeat();
+    } else {
+      _ctrl.stop();
+      _ctrl.value = 0;
+    }
   }
 
   @override
@@ -628,14 +667,6 @@ class _SpeakerIconState extends State<_SpeakerIcon>
   @override
   Widget build(BuildContext context) {
     final color = UltramanTheme.gold;
-    if (widget.loading) {
-      return ScaleTransition(
-        scale: Tween<double>(begin: 0.75, end: 1.12).animate(
-          CurvedAnimation(parent: _ctrl, curve: Curves.easeInOut),
-        ),
-        child: Icon(Icons.volume_up, size: 22, color: color),
-      );
-    }
     if (widget.active) {
       return Row(
         mainAxisSize: MainAxisSize.min,

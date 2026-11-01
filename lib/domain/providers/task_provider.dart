@@ -1,4 +1,3 @@
-
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../data/models/task.dart';
 import 'family_provider.dart';
@@ -15,14 +14,8 @@ class TaskNotifier extends StateNotifier<List<Task>> {
 
   void loadTasks() {
     state = _storage.getTasks();
-    // 模拟测试数据
-    if (state.isEmpty) {
-      state = [
-        Task(id: '1', title: '消灭蛀牙怪兽 (认真刷牙)', iconName: 'tooth_monster', rewardCoins: 10, rewardExp: 50, type: 'daily'),
-        Task(id: '2', title: '整理防卫基地 (收拾房间)', iconName: 'mess_monster', rewardCoins: 20, rewardExp: 100, type: 'daily'),
-      ];
-      _storage.saveTasks(state);
-    }
+    // 无任务时保持为空，交由家长在引导界面 / 控制台自行添加，
+    // 不再注入模拟测试数据 (避免「什么都不选却出现默认任务」)。
   }
 
   void addTask(Task task) {
